@@ -1,5 +1,5 @@
-[![Build and Test](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/build.yml/badge.svg)](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/build.yml)
-[![Release](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/release.yml/badge.svg)](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/release.yml)
+[![Build and Test](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/build.yaml/badge.svg)](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/build.yaml)
+[![Release](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/release.yaml/badge.svg)](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/release.yaml)
 
 [English](README.md)
 
