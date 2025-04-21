@@ -18,5 +18,5 @@ func PathEquals(a, b string) bool {
 	// Goのfilepathパッケージは、パスの区切り文字を正規化するので、
 	// 追加の正規化は必要ありません
 
-	return strings.EqualFold(absA, absB)
+	return absA == absB
 }
