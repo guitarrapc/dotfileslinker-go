@@ -1,9 +1,11 @@
 [![Build and Test](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/build.yml/badge.svg)](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/build.yml)
 [![Release](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/release.yml/badge.svg)](https://github.com/guitarrapc/dotfileslinker-go/actions/workflows/release.yml)
 
+[English](README.md)
+
 # DotfilesLinker (Go版)
 
-DotfilesLinker は、dotfiles リポジトリからホームディレクトリにシンボリックリンクを作成するためのシンプルなツールです。この Go 版は、オリジナルの C# 版 [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) の移植版です。
+DotfilesLinker は、dotfiles リポジトリからホームディレクトリにシンボリックリンクを作成するためのシンプルなツールです。この Go 版は、オリジナルの C# NativeAOT版 [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) の移植版です。
 
 ## 機能
 
