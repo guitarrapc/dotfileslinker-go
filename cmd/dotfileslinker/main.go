@@ -14,8 +14,6 @@ import (
 // Version information set by GoReleaser at build time
 var (
 	version = "dev"
-	commit  = "none"
-	date    = "unknown"
 )
 
 func main() {
@@ -163,5 +161,5 @@ Examples:
 // displayVersion displays version information for the application
 func displayVersion() {
 	appName := filepath.Base(os.Args[0])
-	fmt.Printf("%s version %s, commit %s, built at %s\n", appName, version, commit, date)
+	fmt.Printf("%s version %s\n", appName, version)
 }

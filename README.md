@@ -5,7 +5,7 @@
 
 # DotfilesLinker (Go Version)
 
-Fast Go utility to create symbolic links from dotfiles to your home directory. This is a port of the original [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) written in C# NativeAOT. Supports Windows, Linux, and macOS while respecting your dotfiles repository structure.
+Fast Go utility to create symbolic links from dotfiles to your home directory. This is a port of the original [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) written in C# NativeAOT. Supports Windows, Linux, and macOS while respecting your dotfiles repository structure. It's implemented in pure Go and distributed as a statically linked single binary without any dependency on external libraries like libc.
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
