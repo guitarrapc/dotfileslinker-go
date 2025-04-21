@@ -163,5 +163,5 @@ Examples:
 // displayVersion displays version information for the application
 func displayVersion() {
 	appName := filepath.Base(os.Args[0])
-	fmt.Printf("%s version %s, commit %s, built at %s\n", appName, version, commit, date)
+	fmt.Printf("%s version %s\n", appName, version)
 }
