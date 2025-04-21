@@ -19,6 +19,8 @@ builds:
     main: ./cmd/dotfileslinker
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    flags:
+      - -trimpath
 
 # Archives configuration for GoReleaser v2.8.2
 archives:
@@ -41,9 +43,31 @@ archives:
 
 checksum:
   name_template: "checksums.txt"
+  algorithm: sha256
 
-# Release configuration
+# Release configuration - simplified to work with GitHub auto-generated release notes
 release:
-  draft: true # Create release as draft by default
+  draft: true
   replace_existing_draft: true
   prerelease: auto
+
+# Improved reproducibility
+gomod:
+  proxy: true
+  env:
+    - GOSUMDB=sum.golang.org
+    - GONOSUMDB=github.com/guitarrapc/dotfileslinker-go
+
+# Sign the checksum with cosign
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    artifacts: checksum
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--key=cosign.key"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+    stdin: "{{ .Env.COSIGN_PASSWORD }}"
+    id: checksum
