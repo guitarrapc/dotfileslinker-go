@@ -3,7 +3,7 @@
 
 [English](README.md)
 
-# DotfilesLinker (Go版)
+# dotfileslinker (Go版)
 
 Go言語で実装された高速な dotfiles シンボリックリンク作成ツール。これは C# NativeAOT版 [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) の移植版です。
 
@@ -35,7 +35,7 @@ $ dotfileslinker --force=y
 
 ## 動作原理
 
-DotfilesLinkerは、dotfilesリポジトリの構造に基づいてシンボリックリンクを作成します：
+dotfileslinkerは、dotfilesリポジトリの構造に基づいてシンボリックリンクを作成します：
 
 - ルートディレクトリのドットファイル → `$HOME` にリンク
 - `HOME` ディレクトリ内のファイル → `$HOME` の対応するパスにリンク
@@ -67,7 +67,7 @@ go build ./cmd/dotfileslinker
 <details><summary>Linux の例</summary>
 
 ```sh
-dotefiles
+dotfiles
 ├─.bashrc_custom             # $HOME/.bashrc_customへリンク
 ├─.gitignore_global          # $HOME/.gitignore_globalへリンク
 ├─.gitconfig                 # $HOME/.gitconfigへリンク
@@ -92,7 +92,7 @@ dotefiles
 <details><summary>Windows の例</summary>
 
 ```sh
-dotefiles
+dotfiles
 ├─dotfiles_ignore            # dotfilesリンク用除外リスト
 ├─.gitignore_global          # $HOME/.gitignore_globalへリンク
 ├─.gitconfig                 # $HOME/.gitconfigへリンク

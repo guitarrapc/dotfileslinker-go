@@ -3,7 +3,7 @@
 
 [日本語](README_ja.md)
 
-# DotfilesLinker (Go Version)
+# dotfileslinker (Go Version)
 
 Fast Go utility to create symbolic links from dotfiles to your home directory. This is a port of the original [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) written in C# NativeAOT.
 
@@ -35,7 +35,7 @@ $ dotfileslinker --force=y
 
 ## How It Works
 
-DotfilesLinker creates symbolic links based on your dotfiles repository structure:
+dotfileslinker creates symbolic links based on your dotfiles repository structure:
 
 - Dotfiles in the root directory → linked to `$HOME`
 - Files in the `HOME` directory → linked to the corresponding path in `$HOME`
@@ -67,7 +67,7 @@ go build ./cmd/dotfileslinker
 <details><summary>Linux example</summary>
 
 ```sh
-dotefiles
+dotfiles
 ├─.bashrc_custom             # link to $HOME/.bashrc_custom
 ├─.gitignore_global          # link to $HOME/.gitignore_global
 ├─.gitconfig                 # link to $HOME/.gitconfig
@@ -92,7 +92,7 @@ dotefiles
 <details><summary>Windows example</summary>
 
 ```sh
-dotefiles
+dotfiles
 ├─dotfiles_ignore            # ignore list for dotfiles link
 ├─.gitignore_global          # link to $HOME/.gitignore_global
 ├─.gitconfig                 # link to $HOME/.gitconfig
@@ -171,7 +171,7 @@ All options are optional. The default behavior is to create symbolic links for a
 
 ### Environment Variables
 
-DotfilesLinker can be configured using the following environment variables:
+dotfiles can be configured using the following environment variables:
 
 | Variable | Description | Default |
 | --- | --- | --- |
