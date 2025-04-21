@@ -7,6 +7,11 @@
 
 DotfilesLinker は、dotfiles リポジトリからホームディレクトリにシンボリックリンクを作成するためのシンプルなツールです。この Go 版は、オリジナルの C# NativeAOT版 [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) の移植版です。
 
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 ## 機能
 
 - リポジトリルートの `.` で始まるファイルをホームディレクトリに自動的にリンク

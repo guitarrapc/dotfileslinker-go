@@ -7,6 +7,11 @@
 
 DotfilesLinker is a simple tool for creating symbolic links from your dotfiles repository to your home directory. This Go version is a port of the original [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) written in C# NativeAOT.
 
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 ## Features
 
 - Automatically link files starting with `.` in the repository root to your home directory
