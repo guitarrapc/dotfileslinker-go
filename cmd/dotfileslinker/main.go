@@ -14,8 +14,6 @@ import (
 // Version information set by GoReleaser at build time
 var (
 	version = "dev"
-	commit  = "none"
-	date    = "unknown"
 )
 
 func main() {
