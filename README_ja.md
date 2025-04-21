@@ -16,6 +16,7 @@ Go言語で実装された高速な dotfiles シンボリックリンク作成�
 - [インストール方法](#%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E6%96%B9%E6%B3%95)
 - [使い方](#%E4%BD%BF%E3%81%84%E6%96%B9)
 - [設定](#%E8%A8%AD%E5%AE%9A)
+- [Windowsセキュリティについて](#windows%E3%82%BB%E3%82%AD%E3%83%A5%E3%83%AA%E3%83%86%E3%82%A3%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6)
 - [ライセンス](#%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -209,6 +210,58 @@ LICENSE
 以下のファイルやディレクトリは自動的に除外されます：
 - `.git` で始まるディレクトリ（`.github` など）
 - ルートディレクトリの非ドットファイル（先頭が `.` でないファイル）
+
+## Windowsセキュリティについて
+
+Windows環境でdotfileslinkerを使用する際には、セキュリティ設定に注意してください。特に、シンボリックリンクを作成するためには管理者権限が必要です。以下の手順でセキュリティ設定を確認し、必要に応じて変更してください。
+
+1. 管理者権限でコマンドプロンプトを開きます。
+2. 以下のコマンドを実行して、シンボリックリンクの作成が許可されているか確認します。
+
+```sh
+fsutil behavior query SymlinkEvaluation
+```
+
+3. 出力結果に `Local to local symbolic links are enabled` が含まれていることを確認します。含まれていない場合は、以下のコマンドを実行して有効にします。
+
+```sh
+fsutil behavior set SymlinkEvaluation L2L:1
+```
+
+4. 必要に応じて、他のシンボリックリンク設定も有効にします。
+
+```sh
+fsutil behavior set SymlinkEvaluation L2R:1
+fsutil behavior set SymlinkEvaluation R2R:1
+fsutil behavior set SymlinkEvaluation R2L:1
+```
+
+Windows DefenderなどのアンチウイルスソフトウェアがGoのバイナリを不審なファイルとして検出する場合があります。これはGo言語で作成されたアプリケーションでは一般的な誤検出です。
+
+### バイナリの整合性検証
+
+ダウンロードしたバイナリの整合性を検証するには以下の手順に従ってください：
+
+1. リリースページから `checksums.txt` ファイルをダウンロードします
+2. ダウンロードしたzipファイルのハッシュ値を計算します：
+   ```
+   certutil -hashfile dotfileslinker_x.y.z_windows_amd64.zip SHA256
+   ```
+3. 計算されたハッシュ値と `checksums.txt` の値を比較します
+
+### 署名済みリリース
+
+v0.2.1以降、リリースバイナリはCosignで署名されています。Cosignがインストールされている場合、次のコマンドで署名を検証できます：
+
+```bash
+# checksumファイルの署名を検証
+cosign verify-blob --signature checksums.txt.sig checksums.txt
+```
+
+### 問題が解決しない場合
+
+- 最新バージョンを試してください。ビルド設定が改善されている可能性があります
+- リポジトリのIssueページで問題を報告してください
 
 ## ライセンス
 

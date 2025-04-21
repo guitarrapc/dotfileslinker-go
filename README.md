@@ -16,6 +16,7 @@ Fast Go utility to create symbolic links from dotfiles to your home directory. T
 - [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
+- [Windows Security Notes](#windows-security-notes)
 - [License](#license)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -209,6 +210,35 @@ LICENSE
 The following files and directories are automatically excluded:
 - Directories starting with `.git` (like `.github`)
 - Non-dotfiles in the root directory
+
+## Windows Security Notes
+
+Windows Defender or other antivirus software may flag Go executables as suspicious. This is a common false positive for Go applications.
+
+### Verifying Binary Integrity
+
+To verify the integrity of the downloaded binary:
+
+1. Download the `checksums.txt` file from the release page
+2. Calculate the hash of the downloaded zip file:
+   ```
+   certutil -hashfile dotfileslinker_x.y.z_windows_amd64.zip SHA256
+   ```
+3. Compare the calculated hash with the value in `checksums.txt`
+
+### Signed Releases
+
+Starting from v0.2.1, release binaries are signed with Cosign. You can verify the signature if you have Cosign installed:
+
+```bash
+# Verify the checksums file signature
+cosign verify-blob --signature checksums.txt.sig checksums.txt
+```
+
+### If Problems Persist
+
+- Try the latest version as build configurations may have improved
+- Report issues on the repository's issue page
 
 ## License
 

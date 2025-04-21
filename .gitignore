@@ -29,3 +29,6 @@ go.work.sum
 
 # goreleaser
 dist/
+
+# Signing keys
+cosign.key
