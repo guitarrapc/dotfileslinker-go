@@ -19,17 +19,33 @@ builds:
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
+# archives configuration with proper format for GoReleaser v2.8.2
 archives:
-  - id: default
+  - id: nix
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format_overrides:
-      - goos: windows
-        format: zip
     wrap_in_directory: false
     files:
       - LICENSE*
       - README*
       - CHANGELOG*
+    formats:
+      - tar.gz
+    ids:
+      - dotfileslinker
+    allow_different_binary_count: true
+
+  - id: windows
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    wrap_in_directory: false
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+    formats:
+      - zip
+    ids:
+      - dotfileslinker
+    allow_different_binary_count: true
 
 checksum:
   name_template: "checksums.txt"
