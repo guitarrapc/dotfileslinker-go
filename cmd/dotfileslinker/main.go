@@ -11,7 +11,12 @@ import (
 	"github.com/guitarrapc/dotfileslinker-go/services"
 )
 
-const version = "1.0.0"
+// Version information set by GoReleaser at build time
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
 	args := os.Args[1:]
@@ -158,5 +163,5 @@ Examples:
 // displayVersion displays version information for the application
 func displayVersion() {
 	appName := filepath.Base(os.Args[0])
-	fmt.Printf("%s version %s\n", appName, version)
+	fmt.Printf("%s version %s, commit %s, built at %s\n", appName, version, commit, date)
 }
