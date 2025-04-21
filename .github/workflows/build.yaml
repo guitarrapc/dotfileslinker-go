@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  build-test:
     strategy:
       matrix:
         os: [ubuntu-22.04, windows-2022, macos-14]
@@ -72,3 +72,14 @@ jobs:
         with:
           version: '~> v2'
           args: release --snapshot --clean --skip=publish
+
+  # marker job to target PR status check
+  build:
+    needs: [build-test, goreleaser-check]
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: result
+        run: exit 0
