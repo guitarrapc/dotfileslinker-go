@@ -3,3 +3,4 @@
 - Goはランタイムで利用できる最新の記法を用います。
 - Goのコードはgo fmtでフォーマットします。
 - GitHub Actionsは、actionlintやghalintを用いてLintを行います。
+- GitHub Actionsの各ステップに不用意に改行を含めないでください。どうしても必要な改行は許容します。

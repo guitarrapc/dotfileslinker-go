@@ -50,6 +50,12 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# Release configuration
+release:
+  draft: true # Create release as draft by default
+  replace_existing_draft: true
+  prerelease: auto
+
 changelog:
   sort: asc
   filters:
