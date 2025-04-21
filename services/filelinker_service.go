@@ -94,7 +94,7 @@ func (s *FileLinkerService) processHomeDirectory(repoRoot string, userHome strin
 // processRootDirectory processes and links files in the ROOT directory (Linux/macOS only).
 func (s *FileLinkerService) processRootDirectory(repoRoot string, overwrite bool) error {
 	// Goの場合、ランタイムでOSを確認するのがより明確
-	if os.Getenv("OS") == "Windows_NT" {
+	if runtime.GOOS == "windows" {
 		s.logger.Info("Skipping ROOT directory processing on non-Unix platforms")
 		return nil
 	}
