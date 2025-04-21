@@ -9,6 +9,14 @@ DotfilesLinker は、dotfiles リポジトリからホームディレクトリ�
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+# Table of Contents
+
+- [機能](#%E6%A9%9F%E8%83%BD)
+- [インストール](#%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB)
+- [使い方](#%E4%BD%BF%E3%81%84%E6%96%B9)
+- [ディレクトリ構造](#%E3%83%87%E3%82%A3%E3%83%AC%E3%82%AF%E3%83%88%E3%83%AA%E6%A7%8B%E9%80%A0)
+- [dotfiles_ignore ファイル](#dotfiles_ignore-%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB)
+- [ライセンス](#%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
