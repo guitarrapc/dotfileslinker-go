@@ -6,7 +6,8 @@ before:
     - go mod tidy
 
 builds:
-  - env:
+  - id: dotfileslinker
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -19,33 +20,28 @@ builds:
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
-# archives configuration with proper format for GoReleaser v2.8.2
+# Archives configuration for GoReleaser v2.8.2
 archives:
-  - id: nix
+  - id: default
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     wrap_in_directory: false
     files:
       - LICENSE*
       - README*
       - CHANGELOG*
-    formats:
-      - tar.gz
     ids:
       - dotfileslinker
     allow_different_binary_count: true
-
-  - id: windows
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    wrap_in_directory: false
-    files:
-      - LICENSE*
-      - README*
-      - CHANGELOG*
-    formats:
-      - zip
-    ids:
-      - dotfileslinker
-    allow_different_binary_count: true
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+      - goos: linux
+        formats:
+          - tar.gz
+      - goos: darwin
+        formats:
+          - tar.gz
 
 checksum:
   name_template: "checksums.txt"
