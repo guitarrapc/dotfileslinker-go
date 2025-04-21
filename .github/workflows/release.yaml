@@ -15,12 +15,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          fetch-depth: 0  # complete history is required for tag info and release notes
+          fetch-depth: 0
           persist-credentials: false
+
       - name: Set up Go
         uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
           go-version: '1.24'
+
+      # Cosign installation for signing artifacts
+      - name: Install cosign
+        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+        with:
+          cosign-release: v2.5.0
+      # Install Syft for SBOM generation
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
+      # Setup cosign keys for signing
+      - name: Setup Cosign keys
+        run: |
+          echo "${{ secrets.SYNCED_COSIGN_PRIVATE_KEY }}" > cosign.key
+          chmod 600 cosign.key
+      # Run GoReleaser with signing
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6.3.0
         with:
@@ -29,9 +45,39 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Update Release Notes with gh CLI
-        run: gh release edit "$TAG_NAME" --draft --notes-file <(gh api repos/${{ github.repository }}/releases/generate-notes -F "tag_name=$TAG_NAME" -q .body)
+          COSIGN_PASSWORD: ${{ secrets.SYNCED_COSIGN_PASSWORD }}
+          COSIGN_PRIVATE_KEY: cosign.key
+      # Add security scan information to release notes
+      - name: Add Windows Security Notes
+        run: |
+          cat << EOF > security_notes.md
+
+          ## Windows セキュリティ情報
+
+          Windows DefenderなどのアンチウイルスソフトがGoのバイナリを不審と検出する場合があります。これはGo言語で作成されたアプリケーションでよく見られる誤検出です。
+
+          ### バイナリの検証方法
+          バイナリの安全性を確認するために、以下の手順でチェックサムを検証してください。
+
+          1. リリースページから \`checksums.txt\` をダウンロードします。
+          2. ダウンロードしたzipファイルのハッシュを計算します：
+             ```
+             certutil -hashfile dotfileslinker_x.y.z_windows_amd64.zip SHA256
+             ```
+          3. 計算されたハッシュ値と \`checksums.txt\` の値を比較します。
+
+          ### 問題が解決しない場合
+          - 最新バージョンをお試しください。ビルド設定が改善されている可能性があります。
+          - リポジトリのIssueページで問題を報告してください。
+          EOF
+
+          gh release edit "$TAG_NAME" --notes-file <(cat <(gh api repos/${{ github.repository }}/releases/tags/$TAG_NAME -q .body) security_notes.md)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.ref_name }}
+
+      # Clean up sensitive files
+      - name: Clean up
+        if: always()
+        run: rm -f cosign.key
