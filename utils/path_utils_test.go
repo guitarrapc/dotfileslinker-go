@@ -3,14 +3,10 @@ package utils
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
 func TestPathEquals(t *testing.T) {
-	// Prepare for OS-specific test differences
-	isWindows := runtime.GOOS == "windows"
-
 	// Define test cases
 	tests := []struct {
 		name     string
@@ -36,21 +32,12 @@ func TestPathEquals(t *testing.T) {
 			pathB:    filepath.Join(mustGetwd(), "test"),
 			expected: true,
 		},
-	}
-
-	// Windows-only test
-	if isWindows {
-		tests = append(tests, struct {
-			name     string
-			pathA    string
-			pathB    string
-			expected bool
-		}{
-			name:     "Case difference (Windows)",
+		{
+			name:     "Case difference (should be different)",
 			pathA:    filepath.Join(os.TempDir(), "TEST"),
 			pathB:    filepath.Join(os.TempDir(), "test"),
-			expected: true,
-		})
+			expected: false,
+		},
 	}
 
 	// Execute test cases

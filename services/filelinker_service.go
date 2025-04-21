@@ -2,8 +2,8 @@ package services
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/guitarrapc/dotfileslinker-go/infrastructure"
