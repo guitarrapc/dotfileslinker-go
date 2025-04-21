@@ -8,12 +8,12 @@ on:
 
 jobs:
   build:
-    name: Build and Test
-    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-2025, macos-15]
         go-version: ['1.21', '1.22']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -43,9 +43,3 @@ jobs:
         run: go build -v ./cmd/dotfileslinker
       - name: Test
         run: go test -v ./...
-      - name: Upload build artifact
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: dotfileslinker-${{ runner.os }}
-          path: dotfileslinker
