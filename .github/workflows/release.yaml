@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-cross-platform:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build binary
+        run: |
+          export GOOS=${{ matrix.goos }}
+          export GOARCH=${{ matrix.goarch }}
+          
+          # Get version from tag
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Building ${VERSION} for ${GOOS}-${GOARCH}"
+          
+          # Set output binary name based on OS
+          if [ "$GOOS" = "windows" ]; then
+            OUTPUT_NAME=dotfileslinker-${GOOS}-${GOARCH}.exe
+          else
+            OUTPUT_NAME=dotfileslinker-${GOOS}-${GOARCH}
+          fi
+          
+          # Build with version info
+          go build -v -ldflags="-X 'main.version=${VERSION}'" -o ${OUTPUT_NAME} ./cmd/dotfileslinker
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotfileslinker-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dotfileslinker-${{ matrix.goos }}-${{ matrix.goarch }}*
+
+  create-release:
+    name: Create Release
+    needs: [goreleaser, build-cross-platform]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Display artifacts
+        run: ls -R ./artifacts
+
+      - name: Prepare assets for release
+        run: |
+          mkdir -p ./release
+          find ./artifacts -type f -exec cp {} ./release \;
+
+      - name: Create checksum file
+        run: |
+          cd ./release
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./release/*
+          generate_release_notes: true
+          body_path: CHANGELOG.md
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
