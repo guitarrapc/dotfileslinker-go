@@ -3,9 +3,9 @@
 
 [English](README.md)
 
-# dotfileslinker (Go版)
+# DotfilesLinker (Go版)
 
-Go言語で実装された高速な dotfiles シンボリックリンク作成ツール。これは C# NativeAOT版 [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) の移植版です。
+Go言語で実装された高速な dotfiles シンボリックリンク作成ツール。これは C# NativeAOT版 [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) の移植版です。Windows、Linux、macOSに対応し、dotfilesリポジトリの構造を尊重します。
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
@@ -171,7 +171,7 @@ dotfileslinker --help
 
 ### 環境変数
 
-DotfilesLinkerは以下の環境変数で設定をカスタマイズできます：
+dotfileslinkerは以下の環境変数で設定をカスタマイズできます：
 
 | 変数 | 説明 | デフォルト値 |
 | --- | --- | --- |
