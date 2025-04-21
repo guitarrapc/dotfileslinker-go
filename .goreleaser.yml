@@ -45,24 +45,12 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
-# Release configuration
+# Release configuration - simplified to work with GitHub auto-generated release notes
 release:
   draft: true
   replace_existing_draft: true
   prerelease: auto
-  mode: replace
-  header: |
-    ## {{ .Tag }} ({{ .Date }})
-
-    このリリースは自動ビルドされています。バイナリの検証には checksums.txt をご利用ください。
-
-    ```
-    # Windows
-    certutil -hashfile path\to\downloaded\file.zip SHA256
-
-    # macOS/Linux
-    shasum -a 256 path/to/downloaded/file.tar.gz
-    ```
+  mode: append
 
 # Improved reproducibility
 gomod:
