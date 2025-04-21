@@ -5,35 +5,52 @@
 
 # DotfilesLinker (Go Version)
 
-DotfilesLinker is a simple tool for creating symbolic links from your dotfiles repository to your home directory. This Go version is a port of the original [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) written in C# NativeAOT.
+Fast Go utility to create symbolic links from dotfiles to your home directory. This is a port of the original [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) written in C# NativeAOT. Supports Windows, Linux, and macOS while respecting your dotfiles repository structure.
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 # Table of Contents
 
-- [Features](#features)
+- [Quick Start](#quick-start)
+- [How It Works](#how-it-works)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Directory Structure](#directory-structure)
-- [dotfiles_ignore File](#dotfiles_ignore-file)
+- [Configuration](#configuration)
 - [License](#license)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-## Features
+## Quick Start
 
-- Automatically link files starting with `.` in the repository root to your home directory
-- Link files in the `HOME/` directory to the same relative path in `$HOME`
-- Link files in the `ROOT/` directory to the same relative path in the root directory (`/`) (Linux/macOS only)
-- Option to overwrite existing files or directories
-- Verbose logging option
-- Exclude specific files using a `dotfiles_ignore` file
+1. Download the latest binary from the [GitHub Releases page](https://github.com/guitarrapc/dotfileslinker-go/releases/latest) and place it in a directory that is in your PATH.
+2. Run executable file `dotfileslinker` in your terminal.
+
+```sh
+# Safe mode, do not overwrite existing files
+$ dotfileslinker
+
+# use --force=y to overwrite destination files
+$ dotfileslinker --force=y
+```
+
+## How It Works
+
+dotfileslinker creates symbolic links based on your dotfiles repository structure:
+
+- Dotfiles in the root directory → linked to `$HOME`
+- Files in the `HOME` directory → linked to the corresponding path in `$HOME`
+- Files in the `ROOT` directory → linked to the corresponding path in the root directory (`/`) (Linux and macOS only)
 
 ## Installation
 
 ### Download Binary
 
-Download the appropriate binary for your platform from [GitHub Releases](https://github.com/guitarrapc/dotfileslinker-go/releases).
+Download the latest binary from the [GitHub Releases page](https://github.com/guitarrapc/dotfileslinker-go/releases) and place it in a directory that is in your PATH.
+
+Available platforms:
+- Windows (x64, ARM64)
+- Linux (x64, ARM64)
+- macOS (x64, ARM64)
 
 ### Build from Source
 
@@ -45,67 +62,154 @@ go build ./cmd/dotfileslinker
 
 ## Usage
 
-### Basic Usage
+1. Prepare your dotfiles repository structure as shown below.
 
-Simply run it in the root directory of your dotfiles repository:
+<details><summary>Linux example</summary>
+
+```sh
+dotfiles
+├─.bashrc_custom             # link to $HOME/.bashrc_custom
+├─.gitignore_global          # link to $HOME/.gitignore_global
+├─.gitconfig                 # link to $HOME/.gitconfig
+├─aqua.yaml                  # non-dotfiles file automatically ignore
+├─dotfiles_ignore            # ignore list for dotfiles link
+├─.github
+│  └─workflows               # automatically ignore
+├─HOME
+│  ├─.config
+│  │  └─aquaproj-aqua
+│  │     └─aqua.yaml         # link to $HOME/.config/aquaproj-aqua/aqua.yaml
+│  └─.ssh
+│     └─config               # link to $HOME/.ssh/config
+└─ROOT
+    └─etc
+        └─profile.d
+           └─profile_foo.sh  # link to /etc/profile.d/profile_foo.sh
+```
+
+</details>
+
+<details><summary>Windows example</summary>
+
+```sh
+dotfiles
+├─dotfiles_ignore            # ignore list for dotfiles link
+├─.gitignore_global          # link to $HOME/.gitignore_global
+├─.gitconfig                 # link to $HOME/.gitconfig
+├─.textlintrc.json           # link to $HOME/.textlintrc.json
+├─.wslconfig                 # link to $HOME/.wslconfig
+├─aqua.yaml                  # non-dotfiles file automatically ignore
+├─.github
+│  └─workflows               # automatically ignore
+└─HOME
+    ├─.config
+    │  └─git
+    │     └─config           # link to $HOME/.config/git/config
+    │     └─ignore           # link to $HOME/.config/git/ignore
+    ├─.ssh
+    │  ├─config              # link to $HOME/.ssh/config
+    │  └─conf.d
+    │     └─github           # link to $HOME/.ssh/conf.d/github
+    └─AppData
+       ├─Local
+       │  └─Packages
+       │      └─Microsoft.WindowsTerminal_8wekyb3d8bbwe
+       │          └─LocalState
+       │              └─settings.json   # link to $HOME/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json
+       └─Roaming
+           └─Code
+               └─User
+                  └─settings.json   # link to $HOME/AppData/Roaming/Code/User/settings.json
+```
+
+</details>
+
+2. Run the dotfileslinker command. The `--force=y` option is required to overwrite existing files.
+
+```sh
+$ dotfileslinker --force=y
+[o] Skipping already linked: /home/user/.bashrc_custom -> /home/user/dotfiles/.bashrc_custom
+[o] Skipping already linked: /home/user/.gitconfig -> /home/user/dotfiles/.gitconfig
+[o] Creating symbolic link: /home/user/.gitignore_global -> /home/user/dotfiles/.gitignore_global
+[o] Creating symbolic link: /home/user/.config/aquaproj-aqua/aqua.yaml -> /home/user/dotfiles/HOME/.config/aquaproj-aqua/aqua.yaml
+[o] Creating symbolic link: /home/user/.ssh/config -> /home/user/dotfiles/HOME/.ssh/config
+[o] All operations completed.
+```
+
+3. Verify the symbolic links created by dotfileslinker.
+
+```sh
+$ ls -la $HOME
+total 24
+drwxr-x--- 5 user user 4096 Apr 21 10:30 .
+drwxr-xr-x 3 root root 4096 Apr 21 10:00 ..
+lrwxrwxrwx 1 user user   45 Apr 21 10:30 .bashrc_custom -> /home/user/dotfiles/.bashrc_custom
+lrwxrwxrwx 1 user user   41 Apr 21 10:30 .gitconfig -> /home/user/dotfiles/.gitconfig
+lrwxrwxrwx 1 user user   48 Apr 21 10:30 .gitignore_global -> /home/user/dotfiles/.gitignore_global
+drwxr-xr-x 3 user user 4096 Apr 21 10:30 .config
+drwxr-xr-x 2 user user 4096 Apr 21 10:30 .ssh
+```
+
+4. Run the following command to see all available options:
 
 ```bash
-dotfileslinker
+dotfileslinker --help
 ```
 
-### Command Line Options
+## Configuration
 
-```
-Dotfiles Linker - A utility to link dotfiles from a repository to your home directory
+### Command Options
 
-Usage: dotfileslinker [options]
+All options are optional. The default behavior is to create symbolic links for all dotfiles in the repository.
 
-Options:
-  --help, -h         Display help message
-  --force=y          Overwrite existing files or directories
-  --verbose, -v      Display detailed information during execution
-  --version          Display version information
-```
+| Option | Description |
+| --- | --- |
+| `--help`, `-h` | Display help information |
+| `--version` | Display version information |
+| `--force=y` | Overwrite existing files or directories |
+| `--verbose`, `-v` | Display detailed information during execution |
 
 ### Environment Variables
 
-- `DOTFILES_ROOT` - Directory containing dotfiles (default: current directory)
-- `DOTFILES_HOME` - Target home directory (default: user's home directory)
-- `DOTFILES_IGNORE_FILE` - Name of ignore file (default: `dotfiles_ignore`)
+dotfiles can be configured using the following environment variables:
 
-## Directory Structure
+| Variable | Description | Default |
+| --- | --- | --- |
+| `DOTFILES_ROOT` | Root directory of your dotfiles repository | Current directory |
+| `DOTFILES_HOME` | User's home directory | User profile directory (`$HOME`) |
+| `DOTFILES_IGNORE_FILE` | Name of the ignore file | `dotfiles_ignore` |
 
-DotfilesLinker expects the following directory structure:
+Example usage with environment variables:
 
-```
-dotfiles/                 # Root of dotfiles repository
-├── .gitconfig            # Will be linked to home directory
-├── .bashrc               # Will be linked to home directory
-├── dotfiles_ignore       # List of files to exclude from linking
-├── HOME/                 # $HOME directory structure
-│   ├── .config/          # Will be linked to $HOME/.config
-│   │   └── nvim/
-│   │       └── init.vim  # Will be linked to $HOME/.config/nvim/init.vim
-│   └── bin/
-│       └── script.sh     # Will be linked to $HOME/bin/script.sh
-└── ROOT/                 # Root directory structure (Linux/macOS only)
-    └── etc/
-        └── hosts         # Will be linked to /etc/hosts (requires admin privileges)
+```sh
+# Set custom dotfiles repository path
+export DOTFILES_ROOT=/path/to/my/dotfiles
+
+# Set custom home directory
+export DOTFILES_HOME=/custom/home/path
+
+# Run with custom settings
+dotfileslinker --force=y
 ```
 
-## dotfiles_ignore File
+### dotfiles_ignore File
 
-The `dotfiles_ignore` file should list filenames that you want to exclude from linking, one per line:
+You can specify files or directories to be excluded from linking in the `dotfiles_ignore` file:
 
 ```
-LICENSE
-README.md
-README_ja.md
-dotfiles_ignore
+# Example dotfiles_ignore
 .git
 .github
+README.md
+LICENSE
 ```
+
+### Automatic Exclusions
+
+The following files and directories are automatically excluded:
+- Directories starting with `.git` (like `.github`)
+- Non-dotfiles in the root directory
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.

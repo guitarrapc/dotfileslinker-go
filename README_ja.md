@@ -5,35 +5,52 @@
 
 # DotfilesLinker (Go版)
 
-DotfilesLinker は、dotfiles リポジトリからホームディレクトリにシンボリックリンクを作成するためのシンプルなツールです。この Go 版は、オリジナルの C# NativeAOT版 [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) の移植版です。
+Go言語で実装された高速な dotfiles シンボリックリンク作成ツール。これは C# NativeAOT版 [DotfilesLinker](https://github.com/guitarrapc/DotfilesLinker) の移植版です。Windows、Linux、macOSに対応し、dotfilesリポジトリの構造を尊重します。
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 # Table of Contents
 
-- [機能](#%E6%A9%9F%E8%83%BD)
-- [インストール](#%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB)
+- [クイックスタート](#%E3%82%AF%E3%82%A4%E3%83%83%E3%82%AF%E3%82%B9%E3%82%BF%E3%83%BC%E3%83%88)
+- [動作原理](#%E5%8B%95%E4%BD%9C%E5%8E%9F%E7%90%86)
+- [インストール方法](#%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E6%96%B9%E6%B3%95)
 - [使い方](#%E4%BD%BF%E3%81%84%E6%96%B9)
-- [ディレクトリ構造](#%E3%83%87%E3%82%A3%E3%83%AC%E3%82%AF%E3%83%88%E3%83%AA%E6%A7%8B%E9%80%A0)
-- [dotfiles_ignore ファイル](#dotfiles_ignore-%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB)
+- [設定](#%E8%A8%AD%E5%AE%9A)
 - [ライセンス](#%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-## 機能
+## クイックスタート
 
-- リポジトリルートの `.` で始まるファイルをホームディレクトリに自動的にリンク
-- `HOME/` ディレクトリ内のファイルを `$HOME` の同じ相対パスにリンク
-- `ROOT/` ディレクトリ内のファイルをルートディレクトリ（`/`）の同じ相対パスにリンク（Linux/macOS のみ）
-- 既存のファイルやディレクトリを上書きするオプション
-- 詳細なログ出力オプション
-- `dotfiles_ignore` ファイルを使用した特定のファイルの除外
+1. [GitHubリリースページ](https://github.com/guitarrapc/dotfileslinker-go/releases/latest)から最新のバイナリをダウンロードし、PATHの通ったディレクトリに配置します。
+2. ターミナルで実行ファイル `dotfileslinker` を実行します。
 
-## インストール
+```sh
+# 安全モード、既存ファイルを上書きしません
+$ dotfileslinker
+
+# --force=y オプションで既存ファイルを上書き
+$ dotfileslinker --force=y
+```
+
+## 動作原理
+
+dotfileslinkerは、dotfilesリポジトリの構造に基づいてシンボリックリンクを作成します：
+
+- ルートディレクトリのドットファイル → `$HOME` にリンク
+- `HOME` ディレクトリ内のファイル → `$HOME` の対応するパスにリンク
+- `ROOT` ディレクトリ内のファイル → ルートディレクトリ（`/`）の対応するパスにリンク（LinuxとmacOSのみ）
+
+## インストール方法
 
 ### バイナリをダウンロード
 
-[GitHub Releases](https://github.com/guitarrapc/dotfileslinker-go/releases) から、お使いのプラットフォーム用のバイナリをダウンロードしてください。
+[GitHubリリースページ](https://github.com/guitarrapc/dotfileslinker-go/releases)から最新のバイナリをダウンロードし、PATHの通ったディレクトリに配置してください。
+
+対応プラットフォーム:
+- Windows (x64, ARM64)
+- Linux (x64, ARM64)
+- macOS (x64, ARM64)
 
 ### ソースからビルド
 
@@ -45,67 +62,154 @@ go build ./cmd/dotfileslinker
 
 ## 使い方
 
-### 基本的な使い方
+1. 下記のようなdotfilesリポジトリの構造を準備します。
 
-リポジトリのルートディレクトリで実行するだけです：
+<details><summary>Linux の例</summary>
+
+```sh
+dotfiles
+├─.bashrc_custom             # $HOME/.bashrc_customへリンク
+├─.gitignore_global          # $HOME/.gitignore_globalへリンク
+├─.gitconfig                 # $HOME/.gitconfigへリンク
+├─aqua.yaml                  # ドットファイルでないため自動的に除外
+├─dotfiles_ignore            # dotfilesリンク用除外リスト
+├─.github
+│  └─workflows               # 自動的に除外
+├─HOME
+│  ├─.config
+│  │  └─aquaproj-aqua
+│  │     └─aqua.yaml         # $HOME/.config/aquaproj-aqua/aqua.yamlへリンク
+│  └─.ssh
+│     └─config               # $HOME/.ssh/configへリンク
+└─ROOT
+    └─etc
+        └─profile.d
+           └─profile_foo.sh  # /etc/profile.d/profile_foo.shへリンク
+```
+
+</details>
+
+<details><summary>Windows の例</summary>
+
+```sh
+dotfiles
+├─dotfiles_ignore            # dotfilesリンク用除外リスト
+├─.gitignore_global          # $HOME/.gitignore_globalへリンク
+├─.gitconfig                 # $HOME/.gitconfigへリンク
+├─.textlintrc.json           # $HOME/.textlintrc.jsonへリンク
+├─.wslconfig                 # $HOME/.wslconfigへリンク
+├─aqua.yaml                  # ドットファイルでないため自動的に除外
+├─.github
+│  └─workflows               # 自動的に除外
+└─HOME
+    ├─.config
+    │  └─git
+    │     └─config           # $HOME/.config/git/configへリンク
+    │     └─ignore           # $HOME/.config/git/ignoreへリンク
+    ├─.ssh
+    │  ├─config              # $HOME/.ssh/configへリンク
+    │  └─conf.d
+    │     └─github           # $HOME/.ssh/conf.d/githubへリンク
+    └─AppData
+       ├─Local
+       │  └─Packages
+       │      └─Microsoft.WindowsTerminal_8wekyb3d8bbwe
+       │          └─LocalState
+       │              └─settings.json   # $HOME/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.jsonへリンク
+       └─Roaming
+           └─Code
+               └─User
+                  └─settings.json   # $HOME/AppData/Roaming/Code/User/settings.jsonへリンク
+```
+
+</details>
+
+2. dotfileslinkerコマンドを実行します。既存のファイルを上書きするには `--force=y` オプションが必要です。
+
+```sh
+$ dotfileslinker --force=y
+[o] Skipping already linked: /home/user/.bashrc_custom -> /home/user/dotfiles/.bashrc_custom
+[o] Skipping already linked: /home/user/.gitconfig -> /home/user/dotfiles/.gitconfig
+[o] Creating symbolic link: /home/user/.gitignore_global -> /home/user/dotfiles/.gitignore_global
+[o] Creating symbolic link: /home/user/.config/aquaproj-aqua/aqua.yaml -> /home/user/dotfiles/HOME/.config/aquaproj-aqua/aqua.yaml
+[o] Creating symbolic link: /home/user/.ssh/config -> /home/user/dotfiles/HOME/.ssh/config
+[o] All operations completed.
+```
+
+3. DotfilesLinkerによって作成されたシンボリックリンクを確認します。
+
+```sh
+$ ls -la $HOME
+total 24
+drwxr-x--- 5 user user 4096 Apr 21 10:30 .
+drwxr-xr-x 3 root root 4096 Apr 21 10:00 ..
+lrwxrwxrwx 1 user user   45 Apr 21 10:30 .bashrc_custom -> /home/user/dotfiles/.bashrc_custom
+lrwxrwxrwx 1 user user   41 Apr 21 10:30 .gitconfig -> /home/user/dotfiles/.gitconfig
+lrwxrwxrwx 1 user user   48 Apr 21 10:30 .gitignore_global -> /home/user/dotfiles/.gitignore_global
+drwxr-xr-x 3 user user 4096 Apr 21 10:30 .config
+drwxr-xr-x 2 user user 4096 Apr 21 10:30 .ssh
+```
+
+4. 利用可能なすべてのオプションを表示するには、以下のコマンドを実行します：
 
 ```bash
-dotfileslinker
+dotfileslinker --help
 ```
 
-### コマンドラインオプション
+## 設定
 
-```
-Dotfiles Linker - A utility to link dotfiles from a repository to your home directory
+### コマンドオプション
 
-Usage: dotfileslinker [options]
+すべてのオプションは任意です。デフォルトでは、リポジトリ内のすべてのドットファイルに対してシンボリックリンクを作成します。
 
-Options:
-  --help, -h         ヘルプメッセージを表示
-  --force=y          既存のファイルやディレクトリを上書き
-  --verbose, -v      実行中に詳細情報を表示
-  --version          バージョン情報を表示
-```
+| オプション | 説明 |
+| --- | --- |
+| `--help`, `-h` | ヘルプ情報を表示 |
+| `--version` | バージョン情報を表示 |
+| `--force=y` | 既存のファイルやディレクトリを上書き |
+| `--verbose`, `-v` | 実行中の詳細情報を表示 |
 
 ### 環境変数
 
-- `DOTFILES_ROOT` - dotfiles を含むディレクトリ（デフォルト: カレントディレクトリ）
-- `DOTFILES_HOME` - ターゲットのホームディレクトリ（デフォルト: ユーザーのホームディレクトリ）
-- `DOTFILES_IGNORE_FILE` - 除外パターンを含むファイルの名前（デフォルト: `dotfiles_ignore`）
+dotfileslinkerは以下の環境変数で設定をカスタマイズできます：
 
-## ディレクトリ構造
+| 変数 | 説明 | デフォルト値 |
+| --- | --- | --- |
+| `DOTFILES_ROOT` | dotfilesリポジトリのルートディレクトリ | カレントディレクトリ |
+| `DOTFILES_HOME` | ユーザーのホームディレクトリ | ユーザープロファイルディレクトリ（`$HOME`） |
+| `DOTFILES_IGNORE_FILE` | 除外ファイルの名前 | `dotfiles_ignore` |
 
-DotfilesLinker は以下のようなディレクトリ構造を想定しています：
+環境変数を使用する例：
 
-```
-dotfiles/                 # dotfiles リポジトリのルート
-├── .gitconfig            # ホームディレクトリにリンク
-├── .bashrc               # ホームディレクトリにリンク
-├── dotfiles_ignore       # リンクから除外するファイルのリスト
-├── HOME/                 # $HOME ディレクトリ構造
-│   ├── .config/          # $HOME/.config にリンク
-│   │   └── nvim/
-│   │       └── init.vim  # $HOME/.config/nvim/init.vim にリンク
-│   └── bin/
-│       └── script.sh     # $HOME/bin/script.sh にリンク
-└── ROOT/                 # ルートディレクトリ構造 (Linux/macOS のみ)
-    └── etc/
-        └── hosts         # /etc/hosts にリンク（管理者権限が必要）
+```sh
+# カスタムdotfilesリポジトリのパスを設定
+export DOTFILES_ROOT=/path/to/my/dotfiles
+
+# カスタムホームディレクトリを設定
+export DOTFILES_HOME=/custom/home/path
+
+# カスタム設定で実行
+dotfileslinker --force=y
 ```
 
-## dotfiles_ignore ファイル
+### dotfiles_ignore ファイル
 
-`dotfiles_ignore` ファイルには、リンクしたくないファイル名を1行に1つずつリストアップします：
+`dotfiles_ignore` ファイルを使用して、リンク作成から除外するファイルやディレクトリを指定できます：
 
 ```
-LICENSE
-README.md
-README_ja.md
-dotfiles_ignore
+# dotfiles_ignore の例
 .git
 .github
+README.md
+LICENSE
 ```
+
+### 自動除外
+
+以下のファイルやディレクトリは自動的に除外されます：
+- `.git` で始まるディレクトリ（`.github` など）
+- ルートディレクトリの非ドットファイル（先頭が `.` でないファイル）
 
 ## ライセンス
 
-このプロジェクトは MIT ライセンスの下で公開されています。詳細は [LICENSE](LICENSE) ファイルを参照してください。
+このプロジェクトは MIT ライセンスの下で公開されています。詳細は [LICENSE](LICENSE.md) ファイルを参照してください。
