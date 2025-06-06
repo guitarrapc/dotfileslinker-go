@@ -24,6 +24,7 @@ func main() {
 	showVersion := containsFlag(args, "--version")
 	forceOverwrite := containsFlag(args, "--force=y")
 	verbose := containsFlag(args, "--verbose", "-v")
+	dryRun := containsFlag(args, "--dry-run", "-d")
 
 	// display help or version information and exit if requested
 	if showHelp {
@@ -49,15 +50,20 @@ func main() {
 	logger.Info(fmt.Sprintf("User home: %s", userHome))
 	logger.Info(fmt.Sprintf("Ignore file: %s", ignoreFileName))
 	logger.Info(fmt.Sprintf("Force overwrite: %v", forceOverwrite))
+	logger.Info(fmt.Sprintf("Dry run: %v", dryRun))
 
 	// execute
-	err := svc.LinkDotfiles(executionRoot, userHome, ignoreFileName, forceOverwrite)
+	err := svc.LinkDotfiles(executionRoot, userHome, ignoreFileName, forceOverwrite, dryRun)
 	if err != nil {
 		handleError(logger, err)
 		os.Exit(1)
 	}
 
-	logger.Success("All operations completed.")
+	if dryRun {
+		logger.Success("Dry run completed successfully. No changes were made.")
+	} else {
+		logger.Success("All operations completed.")
+	}
 }
 
 // handleError logs errors based on their type
@@ -132,6 +138,7 @@ Options:
   --force=y          Overwrite existing files or directories
   --verbose, -v      Display detailed information during execution
   --version          Display version information
+  --dry-run, -d      Simulate the operations without making any changes
 
 Description:
   This utility creates symbolic links from files in the current directory
@@ -155,7 +162,8 @@ Examples:
   %s              # Link dotfiles using default settings
   %s --force=y    # Overwrite any existing files
   %s --verbose    # Show detailed information
-`, appName, appName, appName, appName)
+  %s --dry-run    # Simulate the operations
+`, appName, appName, appName, appName, appName)
 }
 
 // displayVersion displays version information for the application

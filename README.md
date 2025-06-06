@@ -178,6 +178,7 @@ All options are optional. The default behavior is to create symbolic links for a
 | `--version` | Display version information |
 | `--force=y` | Overwrite existing files or directories |
 | `--verbose`, `-v` | Display detailed information during execution |
+| `--dry-run`, `-d` | Simulate operations without making any changes |
 
 ### Environment Variables
 
