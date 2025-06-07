@@ -35,10 +35,10 @@ func TestPathEquals(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "Case difference (should be different)",
+			name:     "Case difference (should be different on Unix, same on Windows)",
 			pathA:    filepath.Join(os.TempDir(), "TEST"),
 			pathB:    filepath.Join(os.TempDir(), "test"),
-			expected: false,
+			expected: runtime.GOOS == "windows", // True on Windows, false on other platforms
 		},
 		{
 			name:     "Paths with redundant elements",
@@ -72,7 +72,7 @@ func TestPathEquals(t *testing.T) {
 				name:     "Windows paths with different drive letter casing",
 				pathA:    "C:\\temp\\test",
 				pathB:    "c:\\temp\\test",
-				expected: false, // Case sensitivity applies to drive letters too
+				expected: true, // Case-insensitive on Windows to match filesystem behavior
 			},
 			{
 				name:     "Windows backslash vs forward slash",

@@ -2,16 +2,17 @@ package utils
 
 import (
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 // PathEquals compares two file or directory paths for equality by resolving to absolute paths.
-// This function performs a case-sensitive comparison on all platforms, including Windows,
-// which may result in re-linking files that differ only in case on case-insensitive filesystems.
+// This function performs a platform-specific comparison:
+// - On Windows: case-insensitive comparison (matching the filesystem behavior)
+// - On other platforms (Linux, macOS): case-sensitive comparison
 //
-// Note: Although Windows filesystem is case-insensitive, we intentionally use case-sensitive
-// comparison for consistency across platforms and to encourage proper casing in path references.
-// Since re-linking has minimal cost, this approach ensures paths are exactly matched and
-// potential casing discrepancies are corrected during the linking process.
+// The function normalizes directory separators and removes redundant path elements
+// before comparison to ensure consistent results.
 func PathEquals(a, b string) bool {
 	absA, errA := filepath.Abs(a)
 	absB, errB := filepath.Abs(b)
@@ -24,6 +25,11 @@ func PathEquals(a, b string) bool {
 	cleanA := filepath.Clean(absA)
 	cleanB := filepath.Clean(absB)
 
-	// Perform case-sensitive comparison on all platforms
+	// On Windows, perform case-insensitive comparison
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(cleanA, cleanB)
+	}
+
+	// On other platforms, perform case-sensitive comparison
 	return cleanA == cleanB
 }

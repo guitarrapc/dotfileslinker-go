@@ -88,6 +88,7 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	} else {
 		s.logger.Info("Dotfiles linking completed")
 	}
+
 	return nil
 }
 

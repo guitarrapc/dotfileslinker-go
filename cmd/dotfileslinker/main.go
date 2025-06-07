@@ -59,9 +59,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if dryRun {
-		logger.Success("Dry run completed successfully. No changes were made.")
-	} else {
+	if !dryRun {
 		logger.Success("All operations completed.")
 	}
 }
