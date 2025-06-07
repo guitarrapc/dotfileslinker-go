@@ -68,6 +68,8 @@ Available platforms:
 git clone https://github.com/guitarrapc/dotfileslinker-go.git
 cd dotfileslinker-go
 go build ./cmd/dotfileslinker
+go test ./...
+golangci-lint run
 ```
 
 ## Usage

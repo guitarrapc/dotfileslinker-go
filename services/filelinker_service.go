@@ -314,59 +314,6 @@ func (s *FileLinkerService) loadIgnoreList(ignoreFilePath string) map[string]boo
 	return ignore
 }
 
-// shouldIgnoreFile determines whether a file should be ignored based on patterns.
-// filePath: The path to the file (relative to the repository root)
-// fileName: The base name of the file
-// isDir: Whether the path is a directory
-// userIgnorePatterns: User-defined ignore patterns
-func (s *FileLinkerService) shouldIgnoreFile(filePath string, fileName string, isDir bool, userIgnorePatterns map[string]bool) bool {
-	// Check default ignore patterns (exact match)
-	if _, exists := defaultIgnorePatterns[fileName]; exists {
-		return true
-	}
-
-	// Check for wildcards in default ignore patterns
-	for pattern := range defaultIgnorePatterns {
-		if strings.Contains(pattern, "*") || strings.Contains(pattern, "?") {
-			// For backward compatibility, we check fileName first
-			if s.isWildcardMatch(fileName, pattern) {
-				return true
-			}
-		}
-	}
-
-	// Check user-defined ignore patterns (exact match)
-	if _, exists := userIgnorePatterns[fileName]; exists {
-		return true
-	}
-
-	// Check for path-based patterns in user ignore patterns
-	for pattern := range userIgnorePatterns {
-		// Skip empty patterns
-		if pattern == "" {
-			continue
-		}
-
-		// If pattern contains special characters, use gitignore matcher
-		if strings.Contains(pattern, "*") || strings.Contains(pattern, "?") ||
-			strings.Contains(pattern, "/") || strings.HasPrefix(pattern, "!") {
-			if s.isGitIgnoreMatch(filePath, pattern, isDir) {
-				return true
-			}
-			continue
-		}
-
-		// For backwards compatibility, also check with the simpler wildcard matcher
-		if strings.Contains(pattern, "*") || strings.Contains(pattern, "?") {
-			if s.isWildcardMatch(fileName, pattern) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // isWildcardMatch performs wildcard matching for file patterns.
 // It supports multiple wildcards in a pattern (e.g., "a*b*c").
 func (s *FileLinkerService) isWildcardMatch(fileName string, pattern string) bool {
