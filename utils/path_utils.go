@@ -20,6 +20,10 @@ func PathEquals(a, b string) bool {
 		return false
 	}
 
+	// Clean paths to normalize directory separators and remove redundant elements
+	cleanA := filepath.Clean(absA)
+	cleanB := filepath.Clean(absB)
+
 	// Perform case-sensitive comparison on all platforms
-	return absA == absB
+	return cleanA == cleanB
 }
