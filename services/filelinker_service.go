@@ -85,9 +85,9 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 
 	if dryRun {
 		s.logger.Info("DRY RUN COMPLETED: No files were actually linked")
-	} else {
-		s.logger.Info("Dotfiles linking completed")
 	}
+
+	s.logger.Info("Dotfiles linking completed")
 	return nil
 }
 
