@@ -83,7 +83,7 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 
 	// Run tests
 	t.Run("Normal linking operation", func(t *testing.T) {
-		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false)
+		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false, false)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
@@ -129,7 +129,7 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 		fs.AddFile(filepath.Join(userHome, ".bashrc"), "# existing bashrc")
 
 		// Execute link operation (without overwrite)
-		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false)
+		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false, false)
 
 		// Should get an error with overwrite=false
 		if err == nil {
@@ -158,7 +158,7 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 		fs.AddFile(filepath.Join(userHome, ".bashrc"), "# existing bashrc")
 
 		// Execute link operation (with overwrite)
-		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, true)
+		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, true, false)
 
 		// Should not error with overwrite=true
 		if err != nil {
@@ -194,7 +194,7 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 		service := NewFileLinkerService(fs, logger)
 
 		// Execute link operation
-		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false)
+		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false, false)
 
 		// Should not error
 		if err != nil {
@@ -277,5 +277,119 @@ func TestFileLinkerService_LoadIgnoreList(t *testing.T) {
 		if len(ignoreList) != 0 {
 			t.Errorf("Expected empty ignore list but got: %v", ignoreList)
 		}
+	})
+}
+
+// Test dry run functionality
+func TestFileLinkerService_DryRun(t *testing.T) {
+	// Setup test environment
+	fs := infrastructure.NewMockFileSystem()
+	logger := NewMockLogger()
+
+	// Basic path settings for tests
+	repoRoot := "/repo"
+	userHome := "/home/user"
+	ignoreFileName := ".ignore"
+
+	// Set up files and directory structure for testing
+	fs.AddFile(filepath.Join(repoRoot, ".bashrc"), "# bashrc content")
+	fs.AddFile(filepath.Join(repoRoot, ".vimrc"), "# vimrc content")
+	fs.AddFile(filepath.Join(repoRoot, ignoreFileName), ".git\n.ignore\nREADME.md\n.DS_Store")
+	fs.AddFile(filepath.Join(repoRoot, "README.md"), "# readme")
+	fs.AddFile(filepath.Join(repoRoot, ".DS_Store"), "binary content")
+	fs.AddDirectory(filepath.Join(repoRoot, "HOME"))
+	fs.AddFile(filepath.Join(repoRoot, "HOME", ".config", "nvim", "init.vim"), "# neovim config")
+	fs.AddDirectory(filepath.Join(repoRoot, "ROOT"))
+	fs.AddFile(filepath.Join(repoRoot, "ROOT", "etc", "hosts"), "127.0.0.1 localhost")
+
+	// Configure file enumeration results
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{
+		filepath.Join(repoRoot, ".bashrc"),
+		filepath.Join(repoRoot, ".vimrc"),
+		filepath.Join(repoRoot, ".ignore"),
+		filepath.Join(repoRoot, ".DS_Store"),
+		filepath.Join(repoRoot, ".git"),
+	})
+
+	fs.SetupFileEnumeration(filepath.Join(repoRoot, "HOME"), "*", true, []string{
+		filepath.Join(repoRoot, "HOME", ".config", "nvim", "init.vim"),
+	})
+
+	fs.SetupFileEnumeration(filepath.Join(repoRoot, "ROOT"), "*", true, []string{
+		filepath.Join(repoRoot, "ROOT", "etc", "hosts"),
+	})
+
+	// Create the service for testing
+	service := NewFileLinkerService(fs, logger)
+
+	// Test with dry run
+	t.Run("Dry run operation", func(t *testing.T) {
+		// Reset the logger
+		logger = NewMockLogger()
+		service = NewFileLinkerService(fs, logger)
+
+		// Run with dry run enabled
+		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false, true)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		// Verify dry run logs were produced
+		dryRunMsgFound := false
+		for _, msg := range logger.InfoLogs {
+			if msg == "DRY RUN MODE: No files will be actually linked" {
+				dryRunMsgFound = true
+				break
+			}
+		}
+		if !dryRunMsgFound {
+			t.Error("Dry run mode message not logged")
+		}
+
+		// Verify that symbolic links were NOT created
+		linksToCheck := []string{
+			filepath.Join(userHome, ".bashrc"),
+			filepath.Join(userHome, ".vimrc"),
+			filepath.Join(userHome, ".config", "nvim", "init.vim"),
+		}
+
+		for _, link := range linksToCheck {
+			if fs.GetLinkTarget(link) != "" {
+				t.Errorf("Link should not be created in dry run mode: %s", link)
+			}
+		}
+
+		// Verify that [DRY-RUN] prefixed logs were produced
+		dryRunOperationFound := false
+		for _, msg := range logger.SuccessLogs {
+			if strings.HasPrefix(msg, "[DRY-RUN]") {
+				dryRunOperationFound = true
+				break
+			}
+		}
+		if !dryRunOperationFound {
+			t.Error("No dry run operation messages logged")
+		}
+	})
+
+	// Test OS-specific default ignores
+	t.Run("Default OS-specific ignore patterns", func(t *testing.T) {
+		// Reset the logger
+		logger = NewMockLogger()
+		service = NewFileLinkerService(fs, logger)
+
+		// Run with dry run enabled
+		err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false, true)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		// Verify that .DS_Store was ignored
+		for _, msg := range logger.VerboseLogs {
+			if strings.Contains(msg, ".DS_Store") && strings.Contains(msg, "Ignored file") {
+				return // Test passed
+			}
+		}
+		t.Error("OS-specific file (.DS_Store) was not ignored")
 	})
 }

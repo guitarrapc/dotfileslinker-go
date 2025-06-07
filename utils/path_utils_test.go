@@ -3,6 +3,8 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -38,6 +40,48 @@ func TestPathEquals(t *testing.T) {
 			pathB:    filepath.Join(os.TempDir(), "test"),
 			expected: false,
 		},
+		{
+			name:     "Paths with redundant elements",
+			pathA:    filepath.Join(os.TempDir(), "test", ".."),
+			pathB:    os.TempDir(),
+			expected: true,
+		},
+		{
+			name:     "Paths with trailing separators",
+			pathA:    filepath.Join(os.TempDir(), "test") + string(os.PathSeparator),
+			pathB:    filepath.Join(os.TempDir(), "test"),
+			expected: true,
+		},
+		{
+			name:     "Paths with different separators",
+			pathA:    strings.ReplaceAll(filepath.Join(os.TempDir(), "test"), string(os.PathSeparator), "/"),
+			pathB:    filepath.Join(os.TempDir(), "test"),
+			expected: true,
+		},
+	}
+
+	// Platform-specific test cases
+	if runtime.GOOS == "windows" {
+		windowsTests := []struct {
+			name     string
+			pathA    string
+			pathB    string
+			expected bool
+		}{
+			{
+				name:     "Windows paths with different drive letter casing",
+				pathA:    "C:\\temp\\test",
+				pathB:    "c:\\temp\\test",
+				expected: false, // Case sensitivity applies to drive letters too
+			},
+			{
+				name:     "Windows backslash vs forward slash",
+				pathA:    "C:\\temp\\test\\path",
+				pathB:    "C:/temp/test/path",
+				expected: true, // Should normalize slashes
+			},
+		}
+		tests = append(tests, windowsTests...)
 	}
 
 	// Execute test cases

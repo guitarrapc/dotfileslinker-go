@@ -68,6 +68,8 @@ $ scoop install dotfileslinker-go
 git clone https://github.com/guitarrapc/dotfileslinker-go.git
 cd dotfileslinker-go
 go build ./cmd/dotfileslinker
+go test ./...
+golangci-lint run
 ```
 
 ## 使い方
@@ -178,6 +180,7 @@ dotfileslinker --help
 | `--version` | バージョン情報を表示 |
 | `--force=y` | 既存のファイルやディレクトリを上書き |
 | `--verbose`, `-v` | 実行中の詳細情報を表示 |
+| `--dry-run`, `-d` | 実際に変更を加えずに操作をシミュレーション |
 
 ### 環境変数
 

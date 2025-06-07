@@ -68,6 +68,8 @@ Available platforms:
 git clone https://github.com/guitarrapc/dotfileslinker-go.git
 cd dotfileslinker-go
 go build ./cmd/dotfileslinker
+go test ./...
+golangci-lint run
 ```
 
 ## Usage
@@ -178,6 +180,7 @@ All options are optional. The default behavior is to create symbolic links for a
 | `--version` | Display version information |
 | `--force=y` | Overwrite existing files or directories |
 | `--verbose`, `-v` | Display detailed information during execution |
+| `--dry-run`, `-d` | Simulate operations without making any changes |
 
 ### Environment Variables
 
