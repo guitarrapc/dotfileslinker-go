@@ -131,7 +131,7 @@ func TestMultiWildcardMatcher(t *testing.T) {
 				return
 			}
 
-			result := service.isWildcardMatch(tt.text, tt.pattern)
+			result := service.isAdvancedWildcardMatch(tt.text, tt.pattern)
 			if result != tt.expected {
 				t.Errorf("multiWildcardMatch(%q, %q) = %v; expected %v",
 					tt.text, tt.pattern, result, tt.expected)
