@@ -314,25 +314,3 @@ func (s *FileLinkerService) loadIgnoreList(ignoreFilePath string) map[string]boo
 
 	return ignore
 }
-
-// isWildcardMatch performs wildcard matching for file patterns.
-// It supports multiple wildcards in a pattern (e.g., "a*b*c").
-func (s *FileLinkerService) isWildcardMatch(fileName string, pattern string) bool {
-	// Case insensitive comparison
-	fileName = strings.ToLower(fileName)
-	pattern = strings.ToLower(pattern)
-
-	// Special cases for backward compatibility with tests
-	if pattern == "a*c*g" && fileName == "abcdefg" {
-		return false
-	}
-	if pattern == "a*middle*z.txt" && fileName == "a_middle_z.txt" {
-		return false
-	}
-	if pattern == "start*middle*end.txt" && fileName == "startmiddleButNoEnd.txt" {
-		return false
-	}
-
-	// Use the advanced wildcard matching implementation
-	return s.isAdvancedWildcardMatch(fileName, pattern)
-}

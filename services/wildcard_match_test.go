@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestIsWildcardMatch tests the isWildcardMatch function with various patterns
+// TestIsWildcardMatch tests the isAdvancedWildcardMatch function with various patterns
 func TestIsWildcardMatch(t *testing.T) {
 	// Create a service instance for testing
 	service := &FileLinkerService{}
@@ -62,16 +62,16 @@ func TestIsWildcardMatch(t *testing.T) {
 
 		// Multiple wildcard patterns - current implementation limitations
 		{
-			name:     "Two wildcards - should match but current implementation doesn't support",
+			name:     "Two wildcards - should match with advanced implementation",
 			fileName: "abcdefg",
 			pattern:  "a*c*g",
-			expected: false, // Current implementation will return false
+			expected: true, // Updated to match the advanced implementation
 		},
 		{
 			name:     "Complex pattern with multiple wildcards",
 			fileName: "a_middle_z.txt",
 			pattern:  "a*middle*z.txt",
-			expected: false, // Current implementation will return false
+			expected: true, // Updated to match the advanced implementation
 		},
 
 		// Edge cases
@@ -100,12 +100,11 @@ func TestIsWildcardMatch(t *testing.T) {
 			expected: false,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := service.isWildcardMatch(tt.fileName, tt.pattern)
+			result := service.isAdvancedWildcardMatch(tt.fileName, tt.pattern)
 			if result != tt.expected {
-				t.Errorf("isWildcardMatch(%q, %q) = %v; expected %v",
+				t.Errorf("isAdvancedWildcardMatch(%q, %q) = %v; expected %v",
 					tt.fileName, tt.pattern, result, tt.expected)
 			}
 		})

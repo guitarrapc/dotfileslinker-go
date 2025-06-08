@@ -18,12 +18,11 @@ func (s *FileLinkerService) shouldIgnoreFileEnhanced(filePath string, fileName s
 	if _, exists := defaultIgnorePatterns[fileName]; exists {
 		return true // Always ignore files that match default patterns
 	}
-
 	// Check for wildcards in default ignore patterns
 	for pattern := range defaultIgnorePatterns {
 		if strings.Contains(pattern, "*") || strings.Contains(pattern, "?") {
 			// For backward compatibility, we check fileName first
-			if s.isWildcardMatch(fileName, pattern) {
+			if s.isAdvancedWildcardMatch(fileName, pattern) {
 				return true // Always ignore files that match default patterns
 			}
 		}
@@ -49,10 +48,9 @@ func (s *FileLinkerService) shouldIgnoreFileEnhanced(filePath string, fileName s
 				continue
 			}
 		}
-
 		// For simple patterns or backward compatibility, try wildcards
 		if strings.Contains(pattern, "*") || strings.Contains(pattern, "?") {
-			if s.isWildcardMatch(fileName, pattern) {
+			if s.isAdvancedWildcardMatch(fileName, pattern) {
 				shouldIgnore = true
 				continue
 			}
@@ -80,7 +78,7 @@ func (s *FileLinkerService) shouldIgnoreFileEnhanced(filePath string, fileName s
 			matches = true
 		} else if strings.Contains(patternWithoutNegation, "*") || strings.Contains(patternWithoutNegation, "?") {
 			// Wildcard match
-			matches = s.isWildcardMatch(fileName, patternWithoutNegation)
+			matches = s.isAdvancedWildcardMatch(fileName, patternWithoutNegation)
 		}
 
 		// If the negation pattern matches, explicitly don't ignore this file
