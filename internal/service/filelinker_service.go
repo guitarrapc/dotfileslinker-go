@@ -1,4 +1,4 @@
-package services
+package service
 
 import (
 	"fmt"
@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/guitarrapc/dotfileslinker-go/infrastructure"
-	"github.com/guitarrapc/dotfileslinker-go/utils"
+	"github.com/guitarrapc/dotfileslinker-go/internal/infrastructure"
+	"github.com/guitarrapc/dotfileslinker-go/internal/util"
 )
 
 // FileLinkerService provides functionality to link dotfiles from a repository to user's home directory or system root.
@@ -231,7 +231,7 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 		currentLinkTarget := s.fs.GetLinkTarget(target)
 
 		// If the target is a symlink and points to the same file, do nothing
-		if currentLinkTarget != "" && utils.PathEquals(currentLinkTarget, source) {
+		if currentLinkTarget != "" && util.PathEquals(currentLinkTarget, source) {
 			if dryRun {
 				s.logger.Success(fmt.Sprintf("[DRY-RUN] Would skip already linked: %s -> %s", target, source))
 			} else {

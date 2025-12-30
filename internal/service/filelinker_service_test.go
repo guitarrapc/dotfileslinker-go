@@ -1,11 +1,11 @@
-package services
+package service
 
 import (
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/guitarrapc/dotfileslinker-go/infrastructure"
+	"github.com/guitarrapc/dotfileslinker-go/internal/infrastructure"
 )
 
 // Mock logger for testing

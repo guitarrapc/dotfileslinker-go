@@ -1,9 +1,9 @@
-package services
+package service
 
 import (
 	"testing"
 
-	"github.com/guitarrapc/dotfileslinker-go/infrastructure"
+	"github.com/guitarrapc/dotfileslinker-go/internal/infrastructure"
 )
 
 // TestShouldIgnoreFileEnhanced tests the shouldIgnoreFileEnhanced method with various patterns and scenarios
