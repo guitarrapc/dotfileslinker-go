@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/guitarrapc/dotfileslinker-go/infrastructure"
-	"github.com/guitarrapc/dotfileslinker-go/services"
+	"github.com/guitarrapc/dotfileslinker-go/internal/infrastructure"
+	"github.com/guitarrapc/dotfileslinker-go/internal/service"
 )
 
 // Version information set by GoReleaser at build time
@@ -38,8 +38,8 @@ func main() {
 
 	// build up
 	fs := infrastructure.NewDefaultFileSystem()
-	logger := services.NewConsoleLogger(verbose)
-	svc := services.NewFileLinkerService(fs, logger)
+	logger := service.NewConsoleLogger(verbose)
+	svc := service.NewFileLinkerService(fs, logger)
 
 	// Get configuration from environment variables or use defaults
 	executionRoot := getEnvOrDefault("DOTFILES_ROOT", getCurrentDir())
@@ -65,7 +65,7 @@ func main() {
 }
 
 // handleError logs errors based on their type
-func handleError(logger services.Logger, err error) {
+func handleError(logger service.Logger, err error) {
 	switch {
 	case os.IsPermission(err):
 		logger.Error("Permission denied: " + err.Error())
