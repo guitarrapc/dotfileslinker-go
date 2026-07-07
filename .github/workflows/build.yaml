@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  build-test:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +74,7 @@ jobs:
           args: release --snapshot --clean --skip=publish,sign
 
   # marker job to target PR status check
-  build:
+  build-complete:
     needs: [build-test, goreleaser-check]
     permissions:
       contents: read
