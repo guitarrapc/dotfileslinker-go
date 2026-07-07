@@ -75,7 +75,7 @@ jobs:
 
   # marker job to target PR status check
   build-complete:
-    needs: [build-test, goreleaser-check]
+    needs: [build, goreleaser-check]
     permissions:
       contents: read
     runs-on: ubuntu-24.04
