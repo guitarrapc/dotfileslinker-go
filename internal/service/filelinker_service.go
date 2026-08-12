@@ -158,13 +158,17 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 
 // planRepositoryRoot collects links for dotfiles in the repository root.
 func (s *FileLinkerService) planRepositoryRoot(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
-	files, err := s.fs.EnumerateFiles(repoRoot, ".*", false)
+	children, err := s.fs.ReadDirectory(repoRoot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to enumerate files in repository root: %w", err)
+		return nil, fmt.Errorf("failed to read repository root: %w", err)
 	}
-	entries := make([]linkPlanEntry, 0, len(files))
+	entries := make([]linkPlanEntry, 0, len(children))
 	var ignoredFiles []string
-	for _, file := range files {
+	for _, child := range children {
+		if child.IsDirectory || !strings.HasPrefix(filepath.Base(child.Path), ".") {
+			continue
+		}
+		file := child.Path
 		relPath, err := filepath.Rel(repoRoot, file)
 		if err != nil {
 			// If we can't get relative path, use just the filename
@@ -438,42 +442,35 @@ func (s *FileLinkerService) collectLinkPlanEntries(repoRoot string, sourceRoot s
 		currentDirectory := pendingDirectories[last]
 		pendingDirectories = pendingDirectories[:last]
 
-		directories, err := s.fs.EnumerateDirectories(currentDirectory)
+		children, err := s.fs.ReadDirectory(currentDirectory)
 		if err != nil {
 			return nil, nil, err
 		}
-		for _, directory := range directories {
-			relativePath, err := filepath.Rel(repoRoot, directory)
+		for _, child := range children {
+			repositoryRelativePath, err := filepath.Rel(repoRoot, child.Path)
 			if err != nil {
 				return nil, nil, err
 			}
-			if shouldIgnoreFile(relativePath, true, ignoreMatcher) {
-				ignoredPaths = append(ignoredPaths, directory)
-				continue
-			}
-			pendingDirectories = append(pendingDirectories, directory)
-		}
 
-		currentFiles, err := s.fs.EnumerateFiles(currentDirectory, "*", false)
-		if err != nil {
-			return nil, nil, err
-		}
-		for _, file := range currentFiles {
-			repositoryRelativePath, err := filepath.Rel(repoRoot, file)
-			if err != nil {
-				return nil, nil, err
+			if child.IsDirectory {
+				if shouldIgnoreFile(repositoryRelativePath, true, ignoreMatcher) {
+					ignoredPaths = append(ignoredPaths, child.Path)
+					continue
+				}
+				pendingDirectories = append(pendingDirectories, child.Path)
+				continue
 			}
 			if shouldIgnoreFile(repositoryRelativePath, false, ignoreMatcher) {
-				ignoredPaths = append(ignoredPaths, file)
+				ignoredPaths = append(ignoredPaths, child.Path)
 				continue
 			}
 
-			destinationRelativePath, err := filepath.Rel(sourceRoot, file)
+			destinationRelativePath, err := filepath.Rel(sourceRoot, child.Path)
 			if err != nil {
 				return nil, nil, err
 			}
 			entries = append(entries, linkPlanEntry{
-				source:       file,
+				source:       child.Path,
 				target:       filepath.Join(destinationRoot, destinationRelativePath),
 				ensureParent: true,
 			})

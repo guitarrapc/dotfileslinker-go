@@ -132,6 +132,35 @@ func TestEnumerateDirectoriesReturnsImmediateChildren(t *testing.T) {
 	assertPathsEqual(t, directories, []string{keptDirectory, skippedDirectory})
 }
 
+func TestReadDirectoryReturnsImmediateChildren(t *testing.T) {
+	root := t.TempDir()
+	file := writeTestFile(t, filepath.Join(root, "file.txt"), "content")
+	directory := filepath.Join(root, "directory")
+	if err := os.Mkdir(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(directory, "nested.txt"), "nested")
+
+	entries, err := NewDefaultFileSystem().ReadDirectory(root)
+	if err != nil {
+		t.Fatalf("ReadDirectory() error = %v", err)
+	}
+	want := map[string]bool{file: false, directory: true}
+	if len(entries) != len(want) {
+		t.Fatalf("ReadDirectory() returned %d entries, want %d: %v", len(entries), len(want), entries)
+	}
+	for _, entry := range entries {
+		isDirectory, exists := want[entry.Path]
+		if !exists {
+			t.Errorf("unexpected entry: %+v", entry)
+			continue
+		}
+		if entry.IsDirectory != isDirectory {
+			t.Errorf("entry %s IsDirectory = %v, want %v", entry.Path, entry.IsDirectory, isDirectory)
+		}
+	}
+}
+
 func TestCreateFileSymlinkAndGetLinkTarget(t *testing.T) {
 	root := t.TempDir()
 	target := writeTestFile(t, filepath.Join(root, "targets", "file.txt"), "content")

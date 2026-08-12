@@ -153,6 +153,41 @@ func (m *MockFileSystem) CreateDirectorySymlink(linkPath string, target string) 
 	return nil
 }
 
+// ReadDirectory reads all immediate children from the mock filesystem.
+func (m *MockFileSystem) ReadDirectory(root string) ([]DirectoryEntry, error) {
+	key := "ReadDirectory:" + root
+	m.OperationLog = append(m.OperationLog, key)
+	if err, exists := m.ErrorResponses[key]; exists {
+		return nil, err
+	}
+
+	root = filepath.Clean(root)
+	seen := make(map[string]struct{})
+	var entries []DirectoryEntry
+	appendEntry := func(path string, isDirectory bool) {
+		path = filepath.Clean(path)
+		if filepath.Dir(path) != root {
+			return
+		}
+		if _, exists := seen[path]; exists {
+			return
+		}
+		seen[path] = struct{}{}
+		entries = append(entries, DirectoryEntry{Path: path, IsDirectory: isDirectory})
+	}
+
+	for directory := range m.Directories {
+		appendEntry(directory, true)
+	}
+	for file := range m.Files {
+		appendEntry(file, false)
+	}
+	for link := range m.SymLinks {
+		appendEntry(link, false)
+	}
+	return entries, nil
+}
+
 // EnumerateFiles lists files matching a pattern
 func (m *MockFileSystem) EnumerateFiles(root string, pattern string, recursive bool) ([]string, error) {
 	key := "EnumerateFiles:" + root + ":" + pattern + ":" + getBoolStr(recursive)

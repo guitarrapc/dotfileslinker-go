@@ -78,6 +78,23 @@ func (dfs *DefaultFileSystem) CreateDirectorySymlink(linkPath string, target str
 	return os.Symlink(target, linkPath)
 }
 
+// ReadDirectory reads all immediate children of a directory in one operation.
+func (dfs *DefaultFileSystem) ReadDirectory(root string) ([]DirectoryEntry, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]DirectoryEntry, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, DirectoryEntry{
+			Path:        filepath.Join(root, entry.Name()),
+			IsDirectory: entry.IsDir(),
+		})
+	}
+	return result, nil
+}
+
 // EnumerateFiles enumerates files that match a specific pattern in a specified directory.
 func (dfs *DefaultFileSystem) EnumerateFiles(root string, pattern string, recursive bool) ([]string, error) {
 	var files []string

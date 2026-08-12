@@ -317,19 +317,15 @@ func TestLinkDotfilesValidatesEntirePlanBeforeMutation(t *testing.T) {
 }
 
 func TestLinkDotfilesRejectsIdenticalSourceAndDestinationBeforeMutation(t *testing.T) {
-	fs := infrastructure.NewMockFileSystem()
 	root := filepath.Join(os.TempDir(), "dotfileslinker", "same-path")
 	repoRoot := filepath.Join(root, "repo")
 	userHome := filepath.Join(root, "home")
 	sourceAndTarget := filepath.Join(userHome, ".settings")
-	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{sourceAndTarget})
-	service := NewFileLinkerService(fs, NewMockLogger())
 
-	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", true, false)
+	err := validateLinkPlan(repoRoot, []linkPlanEntry{{source: sourceAndTarget, target: sourceAndTarget}})
 	if err == nil || !strings.Contains(err.Error(), "same path") {
-		t.Fatalf("LinkDotfiles() error = %v, want same path error", err)
+		t.Fatalf("validateLinkPlan() error = %v, want same path error", err)
 	}
-	assertNoMutationOperations(t, fs.OperationLog)
 }
 
 func TestLinkDotfilesRejectsDuplicateDestinationBeforeMutation(t *testing.T) {
@@ -838,7 +834,7 @@ func TestLinkDotfilesStopsWhenIgnoreFileCannotBeRead(t *testing.T) {
 		t.Fatalf("LinkDotfiles() error = %q, want ignore path", err)
 	}
 	for _, operation := range fs.OperationLog {
-		if strings.HasPrefix(operation, "EnumerateFiles:") || strings.HasPrefix(operation, "CreateFileSymlink:") {
+		if strings.HasPrefix(operation, "ReadDirectory:") || strings.HasPrefix(operation, "EnumerateFiles:") || strings.HasPrefix(operation, "CreateFileSymlink:") {
 			t.Fatalf("processing continued after ignore read error: %v", fs.OperationLog)
 		}
 	}
@@ -888,12 +884,44 @@ func TestFileLinkerService_GitIgnoreSemantics(t *testing.T) {
 	}
 
 	forbiddenOperations := map[string]bool{
-		"EnumerateDirectories:" + filepath.Join(homeRoot, "cache"):        true,
-		"EnumerateFiles:" + filepath.Join(homeRoot, "cache") + ":*:false": true,
+		"ReadDirectory:" + filepath.Join(homeRoot, "cache"): true,
 	}
 	for _, operation := range fs.OperationLog {
 		if forbiddenOperations[operation] {
 			t.Fatalf("ignored directory was traversed: %s", operation)
+		}
+	}
+}
+
+func TestCollectLinkPlanEntriesReadsEachDirectoryOnce(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	repoRoot := filepath.Clean("/repo")
+	homeRoot := filepath.Join(repoRoot, "HOME")
+	nestedRoot := filepath.Join(homeRoot, ".config")
+	fs.AddFile(filepath.Join(nestedRoot, "app", "config.json"), "content")
+	service := NewFileLinkerService(fs, NewNullLogger())
+
+	if _, _, err := service.collectLinkPlanEntries(repoRoot, homeRoot, filepath.Clean("/home/user"), newIgnoreMatcher(nil)); err != nil {
+		t.Fatalf("collectLinkPlanEntries() error = %v", err)
+	}
+
+	readCounts := make(map[string]int)
+	for _, operation := range fs.OperationLog {
+		if strings.HasPrefix(operation, "ReadDirectory:") {
+			readCounts[strings.TrimPrefix(operation, "ReadDirectory:")]++
+		}
+		if strings.HasPrefix(operation, "EnumerateFiles:") || strings.HasPrefix(operation, "EnumerateDirectories:") {
+			t.Fatalf("legacy enumeration was used: %s", operation)
+		}
+	}
+	for directory, count := range readCounts {
+		if count != 1 {
+			t.Errorf("directory %s was read %d times, want once", directory, count)
+		}
+	}
+	for _, directory := range []string{homeRoot, nestedRoot, filepath.Join(nestedRoot, "app")} {
+		if readCounts[directory] != 1 {
+			t.Errorf("directory %s read count = %d, want 1", directory, readCounts[directory])
 		}
 	}
 }

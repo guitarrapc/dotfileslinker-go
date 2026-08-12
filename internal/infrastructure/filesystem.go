@@ -1,5 +1,11 @@
 package infrastructure
 
+// DirectoryEntry describes one immediate child returned by ReadDirectory.
+type DirectoryEntry struct {
+	Path        string
+	IsDirectory bool
+}
+
 // FileSystem provides an abstraction for file system operations to support testing and platform-specific behavior.
 type FileSystem interface {
 	// FileExists determines whether the specified file exists.
@@ -31,6 +37,9 @@ type FileSystem interface {
 
 	// CreateDirectorySymlink creates a symbolic link to a directory at the specified path.
 	CreateDirectorySymlink(linkPath string, target string) error
+
+	// ReadDirectory reads all immediate children of a directory in one operation.
+	ReadDirectory(root string) ([]DirectoryEntry, error)
 
 	// EnumerateFiles enumerates files that match a pattern.
 	EnumerateFiles(root string, pattern string, recursive bool) ([]string, error)
