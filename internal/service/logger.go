@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"io"
+	"os"
 )
 
 // Logger provides an interface for logging operations.
@@ -41,12 +43,13 @@ func (nl *NullLogger) Verbose(message string) {}
 
 // ConsoleLogger implements a logger that writes to the console.
 type ConsoleLogger struct {
-	verbose bool
+	verbose     bool
+	errorOutput io.Writer
 }
 
 // NewConsoleLogger creates a new instance of ConsoleLogger.
 func NewConsoleLogger(verbose bool) *ConsoleLogger {
-	return &ConsoleLogger{verbose: verbose}
+	return &ConsoleLogger{verbose: verbose, errorOutput: os.Stderr}
 }
 
 // Success logs a success message.
@@ -56,7 +59,7 @@ func (cl *ConsoleLogger) Success(message string) {
 
 // Error logs an error message.
 func (cl *ConsoleLogger) Error(message string) {
-	writeError(message)
+	writeError(cl.errorOutput, message)
 }
 
 // Info logs an informational message.
@@ -78,9 +81,12 @@ func writeSuccess(msg string) {
 	fmt.Println("\033[32m[o] " + msg + "\033[0m")
 }
 
-// writeError writes an error message.
-func writeError(msg string) {
-	fmt.Println("\033[31m[x] " + msg + "\033[0m")
+// writeError writes an error message to stderr or another configured error stream.
+func writeError(output io.Writer, msg string) {
+	if output == nil {
+		output = os.Stderr
+	}
+	fmt.Fprintln(output, "\033[31m[x] "+msg+"\033[0m")
 }
 
 // writeInfo writes an informational message.
