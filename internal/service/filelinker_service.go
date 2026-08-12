@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/guitarrapc/dotfileslinker-go/internal/infrastructure"
 	"github.com/guitarrapc/dotfileslinker-go/internal/util"
@@ -14,6 +15,12 @@ import (
 type FileLinkerService struct {
 	fs     infrastructure.FileSystem
 	logger Logger
+}
+
+type linkPlanEntry struct {
+	source       string
+	target       string
+	ensureParent bool
 }
 
 // defaultIgnorePatterns contains default patterns to ignore in all directories, common for all platforms
@@ -69,6 +76,9 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	}
 	repoRoot = absoluteRepoRoot
 	userHome = absoluteUserHome
+	if util.IsSameOrDescendant(userHome, repoRoot) {
+		return fmt.Errorf("user home %q must not be the repository root or one of its descendants", userHome)
+	}
 
 	if dryRun {
 		s.logger.Info("DRY RUN MODE: No files will be actually linked")
@@ -87,16 +97,24 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	s.logger.Verbose(fmt.Sprintf("Loaded %d user-defined ignore patterns from %s", ignoreMatcher.count(), ignorePath))
 	s.logger.Verbose(fmt.Sprintf("Using %d default ignore patterns", len(defaultIgnorePatterns)))
 
-	// Process each directory
-	if err := s.processRepositoryRoot(repoRoot, userHome, ignoreMatcher, overwrite, dryRun); err != nil {
+	rootEntries, err := s.planRepositoryRoot(repoRoot, userHome, ignoreMatcher)
+	if err != nil {
 		return err
 	}
-
-	if err := s.processHomeDirectory(repoRoot, userHome, ignoreMatcher, overwrite, dryRun); err != nil {
+	homeEntries, err := s.planHomeDirectory(repoRoot, userHome, ignoreMatcher)
+	if err != nil {
 		return err
 	}
-
-	if err := s.processRootDirectory(repoRoot, ignoreMatcher, overwrite, dryRun); err != nil {
+	systemEntries, err := s.planRootDirectory(repoRoot, ignoreMatcher)
+	if err != nil {
+		return err
+	}
+	plan := append(rootEntries, homeEntries...)
+	plan = append(plan, systemEntries...)
+	if err := validateLinkPlan(repoRoot, plan); err != nil {
+		return err
+	}
+	if err := s.executeLinkPlan(plan, overwrite, dryRun); err != nil {
 		return err
 	}
 
@@ -109,11 +127,11 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	return nil
 }
 
-// processRepositoryRoot processes and links files in the repository root.
-func (s *FileLinkerService) processRepositoryRoot(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
+// planRepositoryRoot collects links for dotfiles in the repository root.
+func (s *FileLinkerService) planRepositoryRoot(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
 	files, err := s.fs.EnumerateFiles(repoRoot, ".*", false)
 	if err != nil {
-		return fmt.Errorf("failed to enumerate files in repository root: %w", err)
+		return nil, fmt.Errorf("failed to enumerate files in repository root: %w", err)
 	}
 	var validFiles []string
 	var ignoredFiles []string
@@ -142,44 +160,43 @@ func (s *FileLinkerService) processRepositoryRoot(repoRoot string, userHome stri
 
 	s.logger.Info(fmt.Sprintf("Found %d files to link from repository root directory to %s", len(validFiles), userHome))
 
-	for _, src := range validFiles {
-		dst := filepath.Join(userHome, filepath.Base(src))
-		s.logger.Verbose(fmt.Sprintf("Linking %s to %s", src, dst))
-		if err := s.linkFile(src, dst, overwrite, dryRun); err != nil {
-			return err
-		}
+	entries := make([]linkPlanEntry, 0, len(validFiles))
+	for _, source := range validFiles {
+		entries = append(entries, linkPlanEntry{
+			source: source,
+			target: filepath.Join(userHome, filepath.Base(source)),
+		})
 	}
-
-	return nil
+	return entries, nil
 }
 
-// processHomeDirectory processes and links files in the HOME directory.
-func (s *FileLinkerService) processHomeDirectory(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
-	return s.processDirectory(repoRoot, "HOME", userHome, ignoreMatcher, overwrite, dryRun)
+// planHomeDirectory collects links from the HOME directory.
+func (s *FileLinkerService) planHomeDirectory(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
+	return s.planDirectory(repoRoot, "HOME", userHome, ignoreMatcher)
 }
 
-// processRootDirectory processes and links files in the ROOT directory (Linux/macOS only).
-func (s *FileLinkerService) processRootDirectory(repoRoot string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
+// planRootDirectory collects links from the ROOT directory (Linux/macOS only).
+func (s *FileLinkerService) planRootDirectory(repoRoot string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
 	// Goの場合、ランタイムでOSを確認するのがより明確
 	if runtime.GOOS == "windows" {
 		s.logger.Info("Skipping ROOT directory processing on non-Unix platforms")
-		return nil
+		return nil, nil
 	}
-	return s.processDirectory(repoRoot, "ROOT", "/", ignoreMatcher, overwrite, dryRun)
+	return s.planDirectory(repoRoot, "ROOT", "/", ignoreMatcher)
 }
 
-// processDirectory processes and links files in the specified directory.
-func (s *FileLinkerService) processDirectory(repoRoot string, srcDir string, destDir string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
+// planDirectory collects links from a structured source directory.
+func (s *FileLinkerService) planDirectory(repoRoot string, srcDir string, destDir string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
 	srcPath := filepath.Join(repoRoot, srcDir)
 	if !s.fs.DirectoryExists(srcPath) {
 		s.logger.Info(fmt.Sprintf("%s directory not found: %s", srcDir, srcPath))
-		return nil
+		return nil, nil
 	}
 
 	s.logger.Info(fmt.Sprintf("Processing %s directory: %s", srcDir, srcPath))
 	files, ignoredFiles, err := s.collectFiles(repoRoot, srcPath, ignoreMatcher)
 	if err != nil {
-		return fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
+		return nil, fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
 	}
 
 	// Log ignored files
@@ -192,29 +209,60 @@ func (s *FileLinkerService) processDirectory(repoRoot string, srcDir string, des
 
 	s.logger.Info(fmt.Sprintf("Found %d files to link from %s directory to %s", len(files), srcDir, destDir))
 
+	entries := make([]linkPlanEntry, 0, len(files))
 	for _, file := range files {
 		rel, err := filepath.Rel(srcPath, file)
 		if err != nil {
-			return fmt.Errorf("failed to get relative path: %w", err)
+			return nil, fmt.Errorf("failed to get relative path: %w", err)
 		}
-		dst := filepath.Join(destDir, rel)
+		entries = append(entries, linkPlanEntry{
+			source:       file,
+			target:       filepath.Join(destDir, rel),
+			ensureParent: true,
+		})
+	}
+	return entries, nil
+}
 
-		dstDir := filepath.Dir(dst)
-		s.logger.Verbose(fmt.Sprintf("Ensuring directory exists: %s", dstDir))
+func validateLinkPlan(repoRoot string, plan []linkPlanEntry) error {
+	seenTargets := make(map[string]string, len(plan))
+	for _, entry := range plan {
+		if util.PathEquals(entry.source, entry.target) {
+			return fmt.Errorf("source and destination resolve to the same path: %q", entry.source)
+		}
+		if util.PathsOverlap(repoRoot, entry.target) {
+			return fmt.Errorf("destination %q overlaps dotfiles repository %q", entry.target, repoRoot)
+		}
 
-		// Only actually create the directory if not in dry-run mode
-		if !dryRun {
-			if err := s.fs.EnsureDirectory(dstDir); err != nil {
-				return fmt.Errorf("failed to create directory: %w", err)
+		key := filepath.Clean(entry.target)
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if previousSource, exists := seenTargets[key]; exists {
+			return fmt.Errorf("multiple sources map to destination %q: %q and %q", entry.target, previousSource, entry.source)
+		}
+		seenTargets[key] = entry.source
+	}
+	return nil
+}
+
+func (s *FileLinkerService) executeLinkPlan(plan []linkPlanEntry, overwrite bool, dryRun bool) error {
+	for _, entry := range plan {
+		if entry.ensureParent {
+			parent := filepath.Dir(entry.target)
+			s.logger.Verbose(fmt.Sprintf("Ensuring directory exists: %s", parent))
+			if !dryRun {
+				if err := s.fs.EnsureDirectory(parent); err != nil {
+					return fmt.Errorf("failed to create directory: %w", err)
+				}
 			}
 		}
 
-		s.logger.Verbose(fmt.Sprintf("Linking %s to %s", file, dst))
-		if err := s.linkFile(file, dst, overwrite, dryRun); err != nil {
+		s.logger.Verbose(fmt.Sprintf("Linking %s to %s", entry.source, entry.target))
+		if err := s.linkFile(entry.source, entry.target, overwrite, dryRun); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 

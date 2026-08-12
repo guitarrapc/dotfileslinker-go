@@ -28,6 +28,39 @@ func PathEquals(a, b string) bool {
 	return pathsEqual(cleanA, cleanB)
 }
 
+// IsSameOrDescendant reports whether path is equal to or below directory.
+func IsSameOrDescendant(path, directory string) bool {
+	if path == "" || directory == "" {
+		return false
+	}
+	fullPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	fullDirectory, err := filepath.Abs(directory)
+	if err != nil {
+		return false
+	}
+	fullPath = filepath.Clean(fullPath)
+	fullDirectory = filepath.Clean(fullDirectory)
+	if pathsEqual(fullPath, fullDirectory) {
+		return true
+	}
+	prefix := fullDirectory
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		prefix += string(filepath.Separator)
+	}
+	if runtime.GOOS == "windows" {
+		return len(fullPath) > len(prefix) && strings.EqualFold(fullPath[:len(prefix)], prefix)
+	}
+	return strings.HasPrefix(fullPath, prefix)
+}
+
+// PathsOverlap reports whether either path is equal to or below the other.
+func PathsOverlap(a, b string) bool {
+	return IsSameOrDescendant(a, b) || IsSameOrDescendant(b, a)
+}
+
 // LinkTargetEquals compares a symbolic link target with an expected path.
 // Relative link targets are resolved from the symbolic link's parent directory.
 func LinkTargetEquals(linkPath, linkTarget, expectedTarget string) bool {

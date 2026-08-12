@@ -249,6 +249,112 @@ func TestLinkDotfilesResolvesRelativeRepositoryRootBeforeCreatingLinks(t *testin
 	}
 }
 
+func TestLinkDotfilesRejectsUserHomeInsideRepositoryBeforeProcessing(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	repoRoot := filepath.Join(os.TempDir(), "dotfileslinker", "overlap", "repo")
+	userHome := filepath.Join(repoRoot, "home")
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", true, false)
+	if err == nil || !strings.Contains(err.Error(), "must not be the repository root") {
+		t.Fatalf("LinkDotfiles() error = %v, want repository overlap error", err)
+	}
+	if len(fs.OperationLog) != 0 {
+		t.Fatalf("filesystem was accessed before root validation: %v", fs.OperationLog)
+	}
+}
+
+func TestLinkDotfilesSameRootWithForcePreservesRealSourceFile(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, ".settings")
+	if err := os.WriteFile(source, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service := NewFileLinkerService(infrastructure.NewDefaultFileSystem(), NewNullLogger())
+
+	err := service.LinkDotfiles(root, root, "dotfiles_ignore", true, false)
+	if err == nil || !strings.Contains(err.Error(), "must not be the repository root") {
+		t.Fatalf("LinkDotfiles() error = %v, want repository overlap error", err)
+	}
+	content, readErr := os.ReadFile(source)
+	if readErr != nil {
+		t.Fatalf("source file was removed: %v", readErr)
+	}
+	if string(content) != "original" {
+		t.Fatalf("source content = %q, want original", content)
+	}
+	if target, readLinkErr := os.Readlink(source); readLinkErr == nil {
+		t.Fatalf("source was replaced with symlink to %q", target)
+	}
+}
+
+func TestLinkDotfilesValidatesEntirePlanBeforeMutation(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "plan-overlap")
+	userHome := root
+	repoRoot := filepath.Join(root, ".dotfiles", "repository")
+	validSource := filepath.Join(repoRoot, ".valid")
+	overlappingSource := filepath.Join(repoRoot, ".dotfiles")
+	fs.AddFile(validSource, "valid")
+	fs.AddFile(overlappingSource, "overlap")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{validSource, overlappingSource})
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", true, false)
+	if err == nil || !strings.Contains(err.Error(), "overlaps dotfiles repository") {
+		t.Fatalf("LinkDotfiles() error = %v, want destination overlap error", err)
+	}
+	assertNoMutationOperations(t, fs.OperationLog)
+}
+
+func TestLinkDotfilesRejectsIdenticalSourceAndDestinationBeforeMutation(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "same-path")
+	repoRoot := filepath.Join(root, "repo")
+	userHome := filepath.Join(root, "home")
+	sourceAndTarget := filepath.Join(userHome, ".settings")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{sourceAndTarget})
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", true, false)
+	if err == nil || !strings.Contains(err.Error(), "same path") {
+		t.Fatalf("LinkDotfiles() error = %v, want same path error", err)
+	}
+	assertNoMutationOperations(t, fs.OperationLog)
+}
+
+func TestLinkDotfilesRejectsDuplicateDestinationBeforeMutation(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "duplicate-target")
+	repoRoot := filepath.Join(root, "repo")
+	userHome := filepath.Join(root, "home")
+	rootSource := filepath.Join(repoRoot, ".config")
+	homeRoot := filepath.Join(repoRoot, "HOME")
+	homeSource := filepath.Join(homeRoot, ".config")
+	fs.AddFile(rootSource, "root")
+	fs.AddDirectory(homeRoot)
+	fs.AddFile(homeSource, "home")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{rootSource})
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", true, false)
+	if err == nil || !strings.Contains(err.Error(), "multiple sources map") {
+		t.Fatalf("LinkDotfiles() error = %v, want duplicate destination error", err)
+	}
+	assertNoMutationOperations(t, fs.OperationLog)
+}
+
+func assertNoMutationOperations(t *testing.T, operations []string) {
+	t.Helper()
+	for _, operation := range operations {
+		for _, prefix := range []string{"Move:", "Delete:", "EnsureDirectory:", "CreateFileSymlink:", "CreateDirectorySymlink:"} {
+			if strings.HasPrefix(operation, prefix) {
+				t.Fatalf("mutation occurred before plan validation: %v", operations)
+			}
+		}
+	}
+}
+
 func TestLinkFileSkipsEquivalentRelativeSymlink(t *testing.T) {
 	fs := infrastructure.NewMockFileSystem()
 	logger := NewMockLogger()

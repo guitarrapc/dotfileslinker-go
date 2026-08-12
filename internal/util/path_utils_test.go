@@ -128,6 +128,33 @@ func TestLinkTargetEquals(t *testing.T) {
 	}
 }
 
+func TestPathContainment(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "containment")
+	tests := []struct {
+		name        string
+		path        string
+		directory   string
+		wantInside  bool
+		wantOverlap bool
+	}{
+		{name: "same", path: root, directory: root, wantInside: true, wantOverlap: true},
+		{name: "descendant", path: filepath.Join(root, "nested", "file"), directory: root, wantInside: true, wantOverlap: true},
+		{name: "ancestor", path: root, directory: filepath.Join(root, "nested"), wantInside: false, wantOverlap: true},
+		{name: "sibling prefix", path: root + "-other", directory: root, wantInside: false, wantOverlap: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsSameOrDescendant(tt.path, tt.directory); got != tt.wantInside {
+				t.Errorf("IsSameOrDescendant(%q, %q) = %v, want %v", tt.path, tt.directory, got, tt.wantInside)
+			}
+			if got := PathsOverlap(tt.path, tt.directory); got != tt.wantOverlap {
+				t.Errorf("PathsOverlap(%q, %q) = %v, want %v", tt.path, tt.directory, got, tt.wantOverlap)
+			}
+		})
+	}
+}
+
 // Test helper: Get current working directory and panic on error
 func mustGetwd() string {
 	dir, err := os.Getwd()
