@@ -1,7 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,28 +19,25 @@ var (
 )
 
 func main() {
-	args := os.Args[1:]
-
-	// parse args
-	showHelp := containsFlag(args, "--help", "-h")
-	showVersion := containsFlag(args, "--version")
-	forceOverwrite := containsFlag(args, "--force")
-	verbose := containsFlag(args, "--verbose", "-v")
-	dryRun := containsFlag(args, "--dry-run", "-d")
+	options, err := parseOptions(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\nTry '%s --help' for more information.\n", err, filepath.Base(os.Args[0]))
+		os.Exit(2)
+	}
 
 	// display help or version information and exit if requested
-	if showHelp {
+	if options.showHelp {
 		displayHelp()
 		return
 	}
-	if showVersion {
+	if options.showVersion {
 		displayVersion()
 		return
 	}
 
 	// build up
 	fs := infrastructure.NewDefaultFileSystem()
-	logger := service.NewConsoleLogger(verbose)
+	logger := service.NewConsoleLogger(options.verbose)
 	svc := service.NewFileLinkerService(fs, logger)
 
 	// Get configuration from environment variables or use defaults
@@ -49,19 +48,49 @@ func main() {
 	logger.Info(fmt.Sprintf("Execution root: %s", executionRoot))
 	logger.Info(fmt.Sprintf("User home: %s", userHome))
 	logger.Info(fmt.Sprintf("Ignore file: %s", ignoreFileName))
-	logger.Info(fmt.Sprintf("Force overwrite: %v", forceOverwrite))
-	logger.Info(fmt.Sprintf("Dry run: %v", dryRun))
+	logger.Info(fmt.Sprintf("Force overwrite: %v", options.forceOverwrite))
+	logger.Info(fmt.Sprintf("Dry run: %v", options.dryRun))
 
 	// execute
-	err := svc.LinkDotfiles(executionRoot, userHome, ignoreFileName, forceOverwrite, dryRun)
+	err = svc.LinkDotfiles(executionRoot, userHome, ignoreFileName, options.forceOverwrite, options.dryRun)
 	if err != nil {
 		handleError(logger, err)
 		os.Exit(1)
 	}
 
-	if !dryRun {
+	if !options.dryRun {
 		logger.Success("All operations completed.")
 	}
+}
+
+type cliOptions struct {
+	showHelp       bool
+	showVersion    bool
+	forceOverwrite bool
+	verbose        bool
+	dryRun         bool
+}
+
+func parseOptions(args []string) (cliOptions, error) {
+	var options cliOptions
+	flags := flag.NewFlagSet("dotfileslinker", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.BoolVar(&options.showHelp, "help", false, "display help")
+	flags.BoolVar(&options.showHelp, "h", false, "display help")
+	flags.BoolVar(&options.showVersion, "version", false, "display version")
+	flags.BoolVar(&options.forceOverwrite, "force", false, "overwrite existing files or directories")
+	flags.BoolVar(&options.verbose, "verbose", false, "display detailed information")
+	flags.BoolVar(&options.verbose, "v", false, "display detailed information")
+	flags.BoolVar(&options.dryRun, "dry-run", false, "simulate operations")
+	flags.BoolVar(&options.dryRun, "d", false, "simulate operations")
+
+	if err := flags.Parse(args); err != nil {
+		return cliOptions{}, err
+	}
+	if flags.NArg() != 0 {
+		return cliOptions{}, fmt.Errorf("unexpected argument %q", flags.Arg(0))
+	}
+	return options, nil
 }
 
 // handleError logs errors based on their type
@@ -78,18 +107,6 @@ func handleError(logger service.Logger, err error) {
 	default:
 		logger.Error("An unexpected error occurred: " + err.Error())
 	}
-}
-
-// containsFlag checks if args contains any of the specified flags
-func containsFlag(args []string, flags ...string) bool {
-	for _, arg := range args {
-		for _, flag := range flags {
-			if strings.EqualFold(arg, flag) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // getEnvOrDefault gets an environment variable or returns a default value if not set
