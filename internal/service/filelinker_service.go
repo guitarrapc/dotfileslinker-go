@@ -104,8 +104,8 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 		s.logger.Info("DRY RUN MODE: No files will be actually linked")
 	}
 
-	s.logger.Info(fmt.Sprintf("Starting to link dotfiles from %s to %s", repoRoot, userHome))
-	s.logger.Info(fmt.Sprintf("Using ignore file: %s", ignoreFileName))
+	s.logger.Infof("Starting to link dotfiles from %s to %s", repoRoot, userHome)
+	s.logger.Infof("Using ignore file: %s", ignoreFileName)
 
 	// Filter files in the root of the repository
 	ignorePath := filepath.Join(repoRoot, ignoreFileName)
@@ -114,8 +114,8 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 		return err
 	}
 	ignoreMatcher := newIgnoreMatcher(userIgnore)
-	s.logger.Verbose(fmt.Sprintf("Loaded %d user-defined ignore patterns from %s", ignoreMatcher.count(), ignorePath))
-	s.logger.Verbose(fmt.Sprintf("Using %d default ignore patterns", len(defaultIgnorePatterns)))
+	s.logger.Verbosef("Loaded %d user-defined ignore patterns from %s", ignoreMatcher.count(), ignorePath)
+	s.logger.Verbosef("Using %d default ignore patterns", len(defaultIgnorePatterns))
 
 	rootEntries, err := s.planRepositoryRoot(repoRoot, userHome, ignoreMatcher)
 	if err != nil {
@@ -184,13 +184,13 @@ func (s *FileLinkerService) planRepositoryRoot(repoRoot string, userHome string,
 
 	// Log ignored files
 	if len(ignoredFiles) > 0 {
-		s.logger.Info(fmt.Sprintf("Ignoring %d files from repository root based on ignore patterns:", len(ignoredFiles)))
+		s.logger.Infof("Ignoring %d files from repository root based on ignore patterns:", len(ignoredFiles))
 		for _, file := range ignoredFiles {
-			s.logger.Verbose(fmt.Sprintf("  Ignored file: %s (matched ignore pattern)", filepath.Base(file)))
+			s.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", filepath.Base(file))
 		}
 	}
 
-	s.logger.Info(fmt.Sprintf("Found %d files to link from repository root directory to %s", len(entries), userHome))
+	s.logger.Infof("Found %d files to link from repository root directory to %s", len(entries), userHome)
 	return entries, nil
 }
 
@@ -213,11 +213,11 @@ func (s *FileLinkerService) planRootDirectory(repoRoot string, ignoreMatcher *ig
 func (s *FileLinkerService) planDirectory(repoRoot string, srcDir string, destDir string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
 	srcPath := filepath.Join(repoRoot, srcDir)
 	if !s.fs.DirectoryExists(srcPath) {
-		s.logger.Info(fmt.Sprintf("%s directory not found: %s", srcDir, srcPath))
+		s.logger.Infof("%s directory not found: %s", srcDir, srcPath)
 		return nil, nil
 	}
 
-	s.logger.Info(fmt.Sprintf("Processing %s directory: %s", srcDir, srcPath))
+	s.logger.Infof("Processing %s directory: %s", srcDir, srcPath)
 	entries, ignoredFiles, err := s.collectLinkPlanEntries(repoRoot, srcPath, destDir, ignoreMatcher)
 	if err != nil {
 		return nil, fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
@@ -225,13 +225,13 @@ func (s *FileLinkerService) planDirectory(repoRoot string, srcDir string, destDi
 
 	// Log ignored files
 	if len(ignoredFiles) > 0 {
-		s.logger.Info(fmt.Sprintf("Ignoring %d files from %s directory based on ignore patterns:", len(ignoredFiles), srcDir))
+		s.logger.Infof("Ignoring %d files from %s directory based on ignore patterns:", len(ignoredFiles), srcDir)
 		for _, file := range ignoredFiles {
-			s.logger.Verbose(fmt.Sprintf("  Ignored file: %s (matched ignore pattern)", file))
+			s.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", file)
 		}
 	}
 
-	s.logger.Info(fmt.Sprintf("Found %d files to link from %s directory to %s", len(entries), srcDir, destDir))
+	s.logger.Infof("Found %d files to link from %s directory to %s", len(entries), srcDir, destDir)
 	return entries, nil
 }
 
@@ -312,7 +312,7 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 			continue
 		}
 		parent := filepath.Dir(entry.target)
-		s.logger.Verbose(fmt.Sprintf("Ensuring directory exists: %s", parent))
+		s.logger.Verbosef("Ensuring directory exists: %s", parent)
 		if err := s.fs.EnsureDirectory(parent); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", parent, err)
 		}
@@ -320,7 +320,7 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 
 	applied := make([]appliedLinkPlanEntry, 0, len(plan))
 	for _, entry := range plan {
-		s.logger.Verbose(fmt.Sprintf("Linking %s to %s", entry.source, entry.target))
+		s.logger.Verbosef("Linking %s to %s", entry.source, entry.target)
 		operation, err := s.applyLink(entry)
 		if err != nil {
 			return errors.Join(err, s.rollbackLinkPlan(applied))
@@ -349,7 +349,7 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 }
 
 func (s *FileLinkerService) logDryRunOperation(entry validatedLinkPlanEntry) {
-	s.logger.Verbose(fmt.Sprintf("Linking %s to %s", entry.source, entry.target))
+	s.logger.Verbosef("Linking %s to %s", entry.source, entry.target)
 	if entry.validationError != nil {
 		s.logger.Error(fmt.Sprintf("[DRY-RUN] Cannot link %s to %s: %s", entry.source, entry.target, entry.validationError))
 		return
@@ -359,7 +359,7 @@ func (s *FileLinkerService) logDryRunOperation(entry validatedLinkPlanEntry) {
 		return
 	}
 	if entry.disposition == linkDispositionReplace {
-		s.logger.Verbose(fmt.Sprintf("[DRY-RUN] Would replace existing target: %s", entry.target))
+		s.logger.Verbosef("[DRY-RUN] Would replace existing target: %s", entry.target)
 	}
 	if entry.sourceIsDirectory {
 		s.logger.Success(fmt.Sprintf("[DRY-RUN] Would create directory symlink: %s -> %s", entry.target, entry.source))
@@ -506,7 +506,7 @@ func (s *FileLinkerService) moveTargetAside(target string) (string, error) {
 		backupPath = fmt.Sprintf("%s.dotfileslinker-backup.%d", target, suffix)
 	}
 
-	s.logger.Verbose(fmt.Sprintf("Temporarily moving existing target: %s -> %s", target, backupPath))
+	s.logger.Verbosef("Temporarily moving existing target: %s -> %s", target, backupPath)
 	if err := s.fs.Move(target, backupPath); err != nil {
 		return "", fmt.Errorf("failed to move existing target aside: %w", err)
 	}
@@ -545,7 +545,7 @@ func (s *FileLinkerService) loadIgnorePatterns(ignoreFilePath string) ([]string,
 		return nil, fmt.Errorf("failed to inspect ignore file %s: %w", ignoreFilePath, err)
 	}
 	if !exists {
-		s.logger.Verbose(fmt.Sprintf("Ignore file not found: %s", ignoreFilePath))
+		s.logger.Verbosef("Ignore file not found: %s", ignoreFilePath)
 		return nil, nil
 	}
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,8 +40,16 @@ func (ml *MockLogger) Info(message string) {
 	ml.InfoLogs = append(ml.InfoLogs, message)
 }
 
+func (ml *MockLogger) Infof(format string, arguments ...any) {
+	ml.InfoLogs = append(ml.InfoLogs, fmt.Sprintf(format, arguments...))
+}
+
 func (ml *MockLogger) Verbose(message string) {
 	ml.VerboseLogs = append(ml.VerboseLogs, message)
+}
+
+func (ml *MockLogger) Verbosef(format string, arguments ...any) {
+	ml.VerboseLogs = append(ml.VerboseLogs, fmt.Sprintf(format, arguments...))
 }
 
 // Tests for FileLinkerService

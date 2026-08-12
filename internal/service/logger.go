@@ -16,9 +16,11 @@ type Logger interface {
 
 	// Info logs an informational message.
 	Info(message string)
+	Infof(format string, arguments ...any)
 
 	// Verbose logs a verbose message.
 	Verbose(message string)
+	Verbosef(format string, arguments ...any)
 }
 
 // NullLogger implements a logger that does nothing.
@@ -36,10 +38,12 @@ func (nl *NullLogger) Success(message string) {}
 func (nl *NullLogger) Error(message string) {}
 
 // Info does nothing for NullLogger.
-func (nl *NullLogger) Info(message string) {}
+func (nl *NullLogger) Info(message string)                   {}
+func (nl *NullLogger) Infof(format string, arguments ...any) {}
 
 // Verbose does nothing for NullLogger.
-func (nl *NullLogger) Verbose(message string) {}
+func (nl *NullLogger) Verbose(message string)                   {}
+func (nl *NullLogger) Verbosef(format string, arguments ...any) {}
 
 // ConsoleLogger implements a logger that writes to the console.
 type ConsoleLogger struct {
@@ -69,10 +73,24 @@ func (cl *ConsoleLogger) Info(message string) {
 	}
 }
 
+// Infof formats and logs an informational message only when verbose logging is enabled.
+func (cl *ConsoleLogger) Infof(format string, arguments ...any) {
+	if cl.verbose {
+		writeInfof(format, arguments...)
+	}
+}
+
 // Verbose logs a verbose message.
 func (cl *ConsoleLogger) Verbose(message string) {
 	if cl.verbose {
 		writeVerbose(message)
+	}
+}
+
+// Verbosef formats and logs a verbose message only when verbose logging is enabled.
+func (cl *ConsoleLogger) Verbosef(format string, arguments ...any) {
+	if cl.verbose {
+		writeVerbosef(format, arguments...)
 	}
 }
 
@@ -94,7 +112,15 @@ func writeInfo(msg string) {
 	fmt.Println("\033[36m[i] " + msg + "\033[0m")
 }
 
+func writeInfof(format string, arguments ...any) {
+	fmt.Printf("\033[36m[i] "+format+"\033[0m\n", arguments...)
+}
+
 // writeVerbose writes a verbose message.
 func writeVerbose(msg string) {
 	fmt.Println("\033[33m[v] " + msg + "\033[0m")
+}
+
+func writeVerbosef(format string, arguments ...any) {
+	fmt.Printf("\033[33m[v] "+format+"\033[0m\n", arguments...)
 }

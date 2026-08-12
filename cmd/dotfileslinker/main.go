@@ -53,11 +53,11 @@ func main() {
 	}
 	ignoreFileName := getEnvOrDefault("DOTFILES_IGNORE_FILE", "dotfiles_ignore")
 
-	logger.Info(fmt.Sprintf("Execution root: %s", executionRoot))
-	logger.Info(fmt.Sprintf("User home: %s", userHome))
-	logger.Info(fmt.Sprintf("Ignore file: %s", ignoreFileName))
-	logger.Info(fmt.Sprintf("Force overwrite: %v", options.forceOverwrite))
-	logger.Info(fmt.Sprintf("Dry run: %v", options.dryRun))
+	logger.Infof("Execution root: %s", executionRoot)
+	logger.Infof("User home: %s", userHome)
+	logger.Infof("Ignore file: %s", ignoreFileName)
+	logger.Infof("Force overwrite: %v", options.forceOverwrite)
+	logger.Infof("Dry run: %v", options.dryRun)
 
 	// execute
 	err = svc.LinkDotfiles(executionRoot, userHome, ignoreFileName, options.forceOverwrite, options.dryRun)
