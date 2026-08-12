@@ -30,3 +30,29 @@ func TestEnumerateDirectoriesReturnsImmediateChildren(t *testing.T) {
 		}
 	}
 }
+
+func TestPathExistsFindsDanglingSymlink(t *testing.T) {
+	root := t.TempDir()
+	link := filepath.Join(root, "dangling")
+	if err := os.Symlink(filepath.Join(root, "missing"), link); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+
+	exists, err := NewDefaultFileSystem().PathExists(link)
+	if err != nil {
+		t.Fatalf("PathExists() error = %v", err)
+	}
+	if !exists {
+		t.Fatal("PathExists() = false for dangling symbolic link")
+	}
+}
+
+func TestPathExistsReturnsFalseForMissingPath(t *testing.T) {
+	exists, err := NewDefaultFileSystem().PathExists(filepath.Join(t.TempDir(), "missing"))
+	if err != nil {
+		t.Fatalf("PathExists() error = %v", err)
+	}
+	if exists {
+		t.Fatal("PathExists() = true for missing path")
+	}
+}

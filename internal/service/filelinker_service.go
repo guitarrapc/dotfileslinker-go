@@ -252,9 +252,10 @@ func (s *FileLinkerService) collectFiles(repoRoot string, sourceRoot string, ign
 
 // linkFile creates a symbolic link from the source to the target path.
 func (s *FileLinkerService) linkFile(source string, target string, overwrite bool, dryRun bool) error {
-	fileExists := s.fs.FileExists(target)
-	dirExists := s.fs.DirectoryExists(target)
-	exists := fileExists || dirExists
+	exists, err := s.fs.PathExists(target)
+	if err != nil {
+		return fmt.Errorf("failed to inspect target: %w", err)
+	}
 
 	if exists {
 		currentLinkTarget := s.fs.GetLinkTarget(target)
@@ -285,14 +286,14 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 	}
 
 	// Create the link (or just log what would happen in dry-run mode)
-	var err error
+	var linkErr error
 	if s.fs.DirectoryExists(source) {
 		if dryRun {
 			s.logger.Success(fmt.Sprintf("[DRY-RUN] Would create directory symlink: %s -> %s", target, source))
 			return nil
 		} else {
 			s.logger.Success(fmt.Sprintf("Creating directory symlink: %s -> %s", target, source))
-			err = s.fs.CreateDirectorySymlink(target, source)
+			linkErr = s.fs.CreateDirectorySymlink(target, source)
 		}
 	} else {
 		if dryRun {
@@ -300,13 +301,13 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 			return nil
 		} else {
 			s.logger.Success(fmt.Sprintf("Creating file symlink: %s -> %s", target, source))
-			err = s.fs.CreateFileSymlink(target, source)
+			linkErr = s.fs.CreateFileSymlink(target, source)
 		}
 	}
 
-	if err != nil {
-		s.logger.Error(fmt.Sprintf("Failed to create symlink from %s to %s: %s", source, target, err))
-		return err
+	if linkErr != nil {
+		s.logger.Error(fmt.Sprintf("Failed to create symlink from %s to %s: %s", source, target, linkErr))
+		return linkErr
 	}
 
 	return nil

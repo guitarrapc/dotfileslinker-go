@@ -8,6 +8,10 @@ type FileSystem interface {
 	// DirectoryExists determines whether the specified directory exists.
 	DirectoryExists(path string) bool
 
+	// PathExists determines whether a directory entry exists without following
+	// symbolic links, so dangling links are reported as existing.
+	PathExists(path string) (bool, error)
+
 	// GetLinkTarget gets the target of a symbolic link at the specified path.
 	// Returns empty string if the path is not a symbolic link.
 	GetLinkTarget(path string) string

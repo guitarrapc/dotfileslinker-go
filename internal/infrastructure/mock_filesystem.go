@@ -41,6 +41,22 @@ func (m *MockFileSystem) DirectoryExists(path string) bool {
 	return exists
 }
 
+// PathExists checks for a file, directory, or symbolic-link entry.
+func (m *MockFileSystem) PathExists(path string) (bool, error) {
+	m.OperationLog = append(m.OperationLog, "PathExists: "+path)
+	if err, exists := m.ErrorResponses["PathExists:"+path]; exists {
+		return false, err
+	}
+	if _, exists := m.Files[path]; exists {
+		return true, nil
+	}
+	if _, exists := m.Directories[path]; exists {
+		return true, nil
+	}
+	_, exists := m.SymLinks[path]
+	return exists, nil
+}
+
 // GetLinkTarget gets the target of a symbolic link
 func (m *MockFileSystem) GetLinkTarget(path string) string {
 	m.OperationLog = append(m.OperationLog, "GetLinkTarget: "+path)

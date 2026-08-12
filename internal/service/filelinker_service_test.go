@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -186,10 +187,6 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 		target := filepath.Join(userHome, ".bashrc")
 		fs.SymLinks[target] = source
 
-		// FileExists or DirectoryExists must return true for the target
-		// because linkFile checks target existence before checking if it's a symlink
-		fs.AddFile(target, "") // This makes FileExists return true
-
 		// Create service with the prepared mocks
 		service := NewFileLinkerService(fs, logger)
 
@@ -223,6 +220,55 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 			t.Error("Skip log not found")
 		}
 	})
+}
+
+func TestLinkFileDanglingSymlink(t *testing.T) {
+	tests := []struct {
+		name      string
+		overwrite bool
+		wantError bool
+		wantLink  string
+	}{
+		{name: "requires force", overwrite: false, wantError: true, wantLink: "/missing"},
+		{name: "repaired with force", overwrite: true, wantError: false, wantLink: "/repo/.bashrc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := infrastructure.NewMockFileSystem()
+			source := filepath.Clean("/repo/.bashrc")
+			target := filepath.Clean("/home/user/.bashrc")
+			fs.AddFile(source, "bashrc")
+			fs.SymLinks[target] = filepath.Clean("/missing")
+			service := NewFileLinkerService(fs, NewMockLogger())
+
+			err := service.linkFile(source, target, tt.overwrite, false)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("linkFile() error = %v, wantError %v", err, tt.wantError)
+			}
+			if got := fs.GetLinkTarget(target); got != filepath.Clean(tt.wantLink) {
+				t.Errorf("link target = %q, want %q", got, filepath.Clean(tt.wantLink))
+			}
+		})
+	}
+}
+
+func TestLinkFileReturnsPathInspectionError(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	source := filepath.Clean("/repo/.bashrc")
+	target := filepath.Clean("/home/user/.bashrc")
+	inspectionError := errors.New("inspection failed")
+	fs.AddFile(source, "bashrc")
+	fs.SetErrorForOperation("PathExists:"+target, inspectionError)
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.linkFile(source, target, true, false)
+	if !errors.Is(err, inspectionError) {
+		t.Fatalf("linkFile() error = %v, want wrapped %v", err, inspectionError)
+	}
+	if fs.GetLinkTarget(target) != "" {
+		t.Fatal("link was created after target inspection failed")
+	}
 }
 
 func TestFileLinkerService_LoadIgnorePatterns(t *testing.T) {

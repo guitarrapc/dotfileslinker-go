@@ -32,6 +32,18 @@ func (dfs *DefaultFileSystem) DirectoryExists(path string) bool {
 	return info.IsDir()
 }
 
+// PathExists determines whether a directory entry exists without following symbolic links.
+func (dfs *DefaultFileSystem) PathExists(path string) (bool, error) {
+	_, err := os.Lstat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 // GetLinkTarget gets the target of a symbolic link at the specified path.
 func (dfs *DefaultFileSystem) GetLinkTarget(path string) string {
 	target, err := os.Readlink(path)
