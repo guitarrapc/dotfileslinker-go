@@ -22,6 +22,13 @@ type ignorePattern struct {
 	trailingDoubleStar bool
 }
 
+const maxStackPathSegments = 64
+
+type pathSegment struct {
+	start int
+	end   int
+}
+
 func newIgnoreMatcher(lines []string) *ignoreMatcher {
 	m := &ignoreMatcher{patterns: make([]ignorePattern, 0, len(lines))}
 	m.append(lines)
@@ -96,52 +103,62 @@ func (m *ignoreMatcher) ignored(filePath string, isDir bool) bool {
 		return false
 	}
 
-	pathSegments := strings.Split(filePath, "/")
-	for end := 1; end < len(pathSegments); end++ {
-		if m.directlyIgnored(pathSegments[:end], true) {
+	segmentCount := countPathSegments(filePath)
+	var stackSegments [maxStackPathSegments]pathSegment
+	var pathSegments []pathSegment
+	if segmentCount <= len(stackSegments) {
+		pathSegments = stackSegments[:segmentCount]
+	} else {
+		pathSegments = make([]pathSegment, segmentCount)
+	}
+	fillPathSegments(filePath, pathSegments)
+
+	for pathLength := 1; pathLength <= segmentCount; pathLength++ {
+		candidateIsDir := pathLength < segmentCount || isDir
+		if m.directlyIgnored(filePath, pathSegments, pathLength, candidateIsDir) {
 			return true
 		}
 	}
-	return m.directlyIgnored(pathSegments, isDir)
+	return false
 }
 
-func (m *ignoreMatcher) directlyIgnored(pathSegments []string, isDir bool) bool {
+func (m *ignoreMatcher) directlyIgnored(filePath string, pathSegments []pathSegment, pathLength int, isDir bool) bool {
 	ignored := false
 	for _, pattern := range m.patterns {
-		if pattern.matches(pathSegments, isDir) {
+		if pattern.matches(filePath, pathSegments, pathLength, isDir) {
 			ignored = !pattern.negated
 		}
 	}
 	return ignored
 }
 
-func (p ignorePattern) matches(pathSegments []string, isDir bool) bool {
+func (p ignorePattern) matches(filePath string, pathSegments []pathSegment, pathLength int, isDir bool) bool {
 	if p.directoryOnly && !isDir {
 		return false
 	}
 
 	if !p.hasSlash && !p.anchored {
-		return wildcardMatch(pathSegments[len(pathSegments)-1], p.segments[0])
+		return wildcardMatch(pathSegmentValue(filePath, pathSegments[pathLength-1]), p.segments[0])
 	}
 
-	if !p.hasSlash && p.anchored && len(pathSegments) != 1 {
+	if !p.hasSlash && p.anchored && pathLength != 1 {
 		return false
 	}
 
-	if p.trailingDoubleStar && len(pathSegments) < len(p.segments) {
+	if p.trailingDoubleStar && pathLength < len(p.segments) {
 		return false
 	}
 
-	return matchPathSegments(p.segments, pathSegments)
+	return matchPathSegments(p.segments, filePath, pathSegments, pathLength)
 }
 
-func matchPathSegments(pattern, value []string) bool {
+func matchPathSegments(pattern []string, valuePath string, value []pathSegment, valueLength int) bool {
 	patternIndex, valueIndex := 0, 0
 	// Remember the most recent ** checkpoint. On a later mismatch, let that
 	// ** consume one more segment instead of recursively trying every split.
 	doubleStarPatternIndex, doubleStarValueIndex := -1, -1
 
-	for valueIndex < len(value) {
+	for valueIndex < valueLength {
 		if patternIndex < len(pattern) && pattern[patternIndex] == "**" {
 			for patternIndex < len(pattern) && pattern[patternIndex] == "**" {
 				patternIndex++
@@ -151,13 +168,13 @@ func matchPathSegments(pattern, value []string) bool {
 			continue
 		}
 
-		if patternIndex < len(pattern) && wildcardMatch(value[valueIndex], pattern[patternIndex]) {
+		if patternIndex < len(pattern) && wildcardMatch(pathSegmentValue(valuePath, value[valueIndex]), pattern[patternIndex]) {
 			patternIndex++
 			valueIndex++
 			continue
 		}
 
-		if doubleStarPatternIndex < 0 || doubleStarValueIndex >= len(value) {
+		if doubleStarPatternIndex < 0 || doubleStarValueIndex >= valueLength {
 			return false
 		}
 		doubleStarValueIndex++
@@ -169,6 +186,42 @@ func matchPathSegments(pattern, value []string) bool {
 		patternIndex++
 	}
 	return patternIndex == len(pattern)
+}
+
+func countPathSegments(value string) int {
+	count := 0
+	insideSegment := false
+	for i := 0; i < len(value); i++ {
+		if value[i] == '/' {
+			insideSegment = false
+		} else if !insideSegment {
+			insideSegment = true
+			count++
+		}
+	}
+	return count
+}
+
+func fillPathSegments(value string, segments []pathSegment) {
+	segmentIndex := 0
+	segmentStart := -1
+	for i := 0; i <= len(value); i++ {
+		if i < len(value) && value[i] != '/' {
+			if segmentStart < 0 {
+				segmentStart = i
+			}
+			continue
+		}
+		if segmentStart >= 0 {
+			segments[segmentIndex] = pathSegment{start: segmentStart, end: i}
+			segmentIndex++
+			segmentStart = -1
+		}
+	}
+}
+
+func pathSegmentValue(value string, segment pathSegment) string {
+	return value[segment.start:segment.end]
 }
 
 // wildcardMatch matches one path segment without allocating temporary strings.

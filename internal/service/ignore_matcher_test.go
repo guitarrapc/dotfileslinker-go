@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -97,19 +98,20 @@ func TestMatchPathSegments(t *testing.T) {
 	tests := []struct {
 		name    string
 		pattern []string
-		value   []string
+		value   string
 		want    bool
 	}{
-		{name: "double star matches zero segments", pattern: []string{"logs", "**", "app.log"}, value: []string{"logs", "app.log"}, want: true},
-		{name: "double star matches multiple segments", pattern: []string{"logs", "**", "app.log"}, value: []string{"logs", "2026", "08", "app.log"}, want: true},
-		{name: "backtracks to double star", pattern: []string{"**", "cache", "target.txt"}, value: []string{"cache", "other", "cache", "target.txt"}, want: true},
-		{name: "consecutive double stars", pattern: []string{"root", "**", "**", "target.txt"}, value: []string{"root", "a", "b", "target.txt"}, want: true},
-		{name: "missing suffix", pattern: []string{"root", "**", "target.txt"}, value: []string{"root", "a", "other.txt"}, want: false},
+		{name: "double star matches zero segments", pattern: []string{"logs", "**", "app.log"}, value: "logs/app.log", want: true},
+		{name: "double star matches multiple segments", pattern: []string{"logs", "**", "app.log"}, value: "logs/2026/08/app.log", want: true},
+		{name: "backtracks to double star", pattern: []string{"**", "cache", "target.txt"}, value: "cache/other/cache/target.txt", want: true},
+		{name: "consecutive double stars", pattern: []string{"root", "**", "**", "target.txt"}, value: "root/a/b/target.txt", want: true},
+		{name: "missing suffix", pattern: []string{"root", "**", "target.txt"}, value: "root/a/other.txt", want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := matchPathSegments(tt.pattern, tt.value); got != tt.want {
+			segments := pathSegmentsForTest(tt.value)
+			if got := matchPathSegments(tt.pattern, tt.value, segments, len(segments)); got != tt.want {
 				t.Errorf("matchPathSegments(%q, %q) = %v, want %v", tt.pattern, tt.value, got, tt.want)
 			}
 		})
@@ -119,18 +121,44 @@ func TestMatchPathSegments(t *testing.T) {
 func TestMatchPathSegmentsAvoidsExponentialBacktracking(t *testing.T) {
 	const count = 32
 	pattern := make([]string, 0, count*2+1)
-	value := make([]string, count)
-	for i := range count {
+	value := strings.Repeat("segment/", count-1) + "segment"
+	for range count {
 		pattern = append(pattern, "**", "segment")
-		value[i] = "segment"
 	}
 	pattern = append(pattern, "missing")
+	segments := pathSegmentsForTest(value)
 
-	if matchPathSegments(pattern, value) {
+	if matchPathSegments(pattern, value, segments, len(segments)) {
 		t.Fatal("non-matching adversarial path unexpectedly matched")
 	}
 
 	if len(pattern) != count*2+1 {
 		t.Fatal("adversarial pattern was constructed incorrectly")
 	}
+}
+
+func TestIgnoreMatcherCommonPathDoesNotAllocate(t *testing.T) {
+	matcher := newIgnoreMatcher([]string{"*.tmp", "HOME/**/cache/", "HOME/config/*.json"})
+	allocations := testing.AllocsPerRun(1000, func() {
+		if !matcher.ignored("HOME/config/settings.json", false) {
+			t.Fatal("common path should match")
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("ignored() allocations = %v, want 0", allocations)
+	}
+}
+
+func TestIgnoreMatcherHandlesPathDeeperThanStackSegmentLimit(t *testing.T) {
+	matcher := newIgnoreMatcher([]string{"**/target.txt"})
+	deepPath := strings.Repeat("level/", maxStackPathSegments+6) + "target.txt"
+	if !matcher.ignored(deepPath, false) {
+		t.Fatal("deep path should match")
+	}
+}
+
+func pathSegmentsForTest(value string) []pathSegment {
+	segments := make([]pathSegment, countPathSegments(value))
+	fillPathSegments(value, segments)
+	return segments
 }
