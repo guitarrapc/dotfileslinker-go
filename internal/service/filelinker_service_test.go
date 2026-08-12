@@ -224,6 +224,31 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 	})
 }
 
+func TestLinkDotfilesResolvesRelativeRepositoryRootBeforeCreatingLinks(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	relativeRepoRoot := filepath.Join("testdata", "relative-repository")
+	absoluteRepoRoot, err := filepath.Abs(relativeRepoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userHome := filepath.Join(os.TempDir(), "dotfileslinker", "relative-root-home")
+	source := filepath.Join(absoluteRepoRoot, ".bashrc")
+	target := filepath.Join(userHome, ".bashrc")
+	fs.AddFile(source, "bashrc")
+	fs.SetupFileEnumeration(absoluteRepoRoot, ".*", false, []string{source})
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	if err := service.LinkDotfiles(relativeRepoRoot, userHome, "dotfiles_ignore", false, false); err != nil {
+		t.Fatalf("LinkDotfiles() error = %v", err)
+	}
+	if got := fs.GetLinkTarget(target); got != source {
+		t.Fatalf("link target = %q, want absolute source %q", got, source)
+	}
+	if !filepath.IsAbs(fs.GetLinkTarget(target)) {
+		t.Fatalf("link target is relative: %q", fs.GetLinkTarget(target))
+	}
+}
+
 func TestLinkFileSkipsEquivalentRelativeSymlink(t *testing.T) {
 	fs := infrastructure.NewMockFileSystem()
 	logger := NewMockLogger()
@@ -422,8 +447,9 @@ func TestFileLinkerService_LoadIgnorePatterns(t *testing.T) {
 
 func TestLinkDotfilesStopsWhenIgnoreFileCannotBeRead(t *testing.T) {
 	fs := infrastructure.NewMockFileSystem()
-	repoRoot := filepath.Clean("/repo")
-	userHome := filepath.Clean("/home/user")
+	testRoot := filepath.Join(os.TempDir(), "dotfileslinker", "ignore-read-error")
+	repoRoot := filepath.Join(testRoot, "repo")
+	userHome := filepath.Join(testRoot, "home", "user")
 	ignoreFileName := "dotfiles_ignore"
 	ignoreFilePath := filepath.Join(repoRoot, ignoreFileName)
 	readError := errors.New("access denied")
@@ -449,8 +475,9 @@ func TestLinkDotfilesStopsWhenIgnoreFileCannotBeRead(t *testing.T) {
 func TestFileLinkerService_GitIgnoreSemantics(t *testing.T) {
 	fs := infrastructure.NewMockFileSystem()
 	service := NewFileLinkerService(fs, NewMockLogger())
-	repoRoot := filepath.Clean("/repo")
-	userHome := filepath.Clean("/home/user")
+	testRoot := filepath.Join(os.TempDir(), "dotfileslinker", "gitignore-semantics")
+	repoRoot := filepath.Join(testRoot, "repo")
+	userHome := filepath.Join(testRoot, "home", "user")
 	ignoreFileName := "dotfiles_ignore"
 	homeRoot := filepath.Join(repoRoot, "HOME")
 
@@ -506,8 +533,9 @@ func TestFileLinkerService_DryRun(t *testing.T) {
 	logger := NewMockLogger()
 
 	// Basic path settings for tests
-	repoRoot := "/repo"
-	userHome := "/home/user"
+	testRoot := filepath.Join(os.TempDir(), "dotfileslinker", "dry-run")
+	repoRoot := filepath.Join(testRoot, "repo")
+	userHome := filepath.Join(testRoot, "home", "user")
 	ignoreFileName := ".ignore"
 
 	// Set up files and directory structure for testing

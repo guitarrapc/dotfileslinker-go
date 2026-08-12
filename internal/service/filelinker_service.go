@@ -59,6 +59,17 @@ func NewFileLinkerService(fs infrastructure.FileSystem, logger Logger) *FileLink
 // overwrite: Whether to overwrite existing files or directories.
 // dryRun: If true, only shows what would be done without actually creating links.
 func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignoreFileName string, overwrite bool, dryRun bool) error {
+	absoluteRepoRoot, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return fmt.Errorf("failed to resolve repository root %q: %w", repoRoot, err)
+	}
+	absoluteUserHome, err := filepath.Abs(userHome)
+	if err != nil {
+		return fmt.Errorf("failed to resolve user home %q: %w", userHome, err)
+	}
+	repoRoot = absoluteRepoRoot
+	userHome = absoluteUserHome
+
 	if dryRun {
 		s.logger.Info("DRY RUN MODE: No files will be actually linked")
 	}
