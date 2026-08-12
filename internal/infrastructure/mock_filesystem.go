@@ -80,6 +80,32 @@ func (m *MockFileSystem) Delete(path string) error {
 	return nil
 }
 
+// Move renames a file, directory, or symbolic link.
+func (m *MockFileSystem) Move(sourcePath string, destinationPath string) error {
+	operation := "Move: " + sourcePath + " -> " + destinationPath
+	m.OperationLog = append(m.OperationLog, operation)
+	if err, exists := m.ErrorResponses["Move:"+sourcePath+"->"+destinationPath]; exists {
+		return err
+	}
+
+	if content, exists := m.Files[sourcePath]; exists {
+		delete(m.Files, sourcePath)
+		m.Files[destinationPath] = content
+		return nil
+	}
+	if _, exists := m.Directories[sourcePath]; exists {
+		delete(m.Directories, sourcePath)
+		m.Directories[destinationPath] = true
+		return nil
+	}
+	if target, exists := m.SymLinks[sourcePath]; exists {
+		delete(m.SymLinks, sourcePath)
+		m.SymLinks[destinationPath] = target
+		return nil
+	}
+	return errors.New("source path not found")
+}
+
 // CreateFileSymlink creates a symbolic link to a file
 func (m *MockFileSystem) CreateFileSymlink(linkPath string, target string) error {
 	m.OperationLog = append(m.OperationLog, "CreateFileSymlink: "+linkPath+" -> "+target)

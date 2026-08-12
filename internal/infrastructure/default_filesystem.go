@@ -58,6 +58,11 @@ func (dfs *DefaultFileSystem) Delete(path string) error {
 	return os.Remove(path)
 }
 
+// Move renames a file, directory, or symbolic link without following it.
+func (dfs *DefaultFileSystem) Move(sourcePath string, destinationPath string) error {
+	return os.Rename(sourcePath, destinationPath)
+}
+
 // CreateFileSymlink creates a symbolic link to a file at the specified path.
 func (dfs *DefaultFileSystem) CreateFileSymlink(linkPath string, target string) error {
 	return os.Symlink(target, linkPath)

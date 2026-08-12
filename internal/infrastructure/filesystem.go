@@ -19,6 +19,9 @@ type FileSystem interface {
 	// Delete deletes the specified file or empty directory.
 	Delete(path string) error
 
+	// Move renames a file, directory, or symbolic link without following it.
+	Move(sourcePath string, destinationPath string) error
+
 	// CreateFileSymlink creates a symbolic link to a file at the specified path.
 	CreateFileSymlink(linkPath string, target string) error
 

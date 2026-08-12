@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -257,6 +258,7 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 		return fmt.Errorf("failed to inspect target: %w", err)
 	}
 
+	backupPath := ""
 	if exists {
 		currentLinkTarget := s.fs.GetLinkTarget(target)
 
@@ -276,11 +278,11 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 		}
 
 		if dryRun {
-			s.logger.Verbose(fmt.Sprintf("[DRY-RUN] Would delete existing target: %s", target))
+			s.logger.Verbose(fmt.Sprintf("[DRY-RUN] Would replace existing target: %s", target))
 		} else {
-			s.logger.Verbose(fmt.Sprintf("Deleting existing target: %s", target))
-			if err := s.fs.Delete(target); err != nil {
-				return fmt.Errorf("failed to delete existing target: %w", err)
+			backupPath, err = s.moveTargetAside(target)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -291,26 +293,71 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 		if dryRun {
 			s.logger.Success(fmt.Sprintf("[DRY-RUN] Would create directory symlink: %s -> %s", target, source))
 			return nil
-		} else {
-			s.logger.Success(fmt.Sprintf("Creating directory symlink: %s -> %s", target, source))
-			linkErr = s.fs.CreateDirectorySymlink(target, source)
 		}
+		linkErr = s.fs.CreateDirectorySymlink(target, source)
 	} else {
 		if dryRun {
 			s.logger.Success(fmt.Sprintf("[DRY-RUN] Would create file symlink: %s -> %s", target, source))
 			return nil
-		} else {
-			s.logger.Success(fmt.Sprintf("Creating file symlink: %s -> %s", target, source))
-			linkErr = s.fs.CreateFileSymlink(target, source)
 		}
+		linkErr = s.fs.CreateFileSymlink(target, source)
 	}
 
 	if linkErr != nil {
+		if backupPath != "" {
+			linkErr = errors.Join(linkErr, s.restoreMovedTarget(target, backupPath))
+		}
 		s.logger.Error(fmt.Sprintf("Failed to create symlink from %s to %s: %s", source, target, linkErr))
-		return linkErr
+		return fmt.Errorf("failed to create symlink from %s to %s: %w", source, target, linkErr)
 	}
 
+	if backupPath != "" {
+		if err := s.fs.Delete(backupPath); err != nil {
+			rollbackErr := s.restoreMovedTarget(target, backupPath)
+			return fmt.Errorf("failed to remove backup after replacing %s: %w", target, errors.Join(err, rollbackErr))
+		}
+	}
+
+	s.logger.Success(fmt.Sprintf("Creating symbolic link: %s -> %s", target, source))
 	return nil
+}
+
+func (s *FileLinkerService) moveTargetAside(target string) (string, error) {
+	backupPath := target + ".dotfileslinker-backup"
+	for suffix := 1; ; suffix++ {
+		exists, err := s.fs.PathExists(backupPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to inspect backup path for %s: %w", target, err)
+		}
+		if !exists {
+			break
+		}
+		backupPath = fmt.Sprintf("%s.dotfileslinker-backup.%d", target, suffix)
+	}
+
+	s.logger.Verbose(fmt.Sprintf("Temporarily moving existing target: %s -> %s", target, backupPath))
+	if err := s.fs.Move(target, backupPath); err != nil {
+		return "", fmt.Errorf("failed to move existing target aside: %w", err)
+	}
+	return backupPath, nil
+}
+
+func (s *FileLinkerService) restoreMovedTarget(target, backupPath string) error {
+	var rollbackErrors []error
+	exists, err := s.fs.PathExists(target)
+	if err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to inspect replacement during rollback: %w", err))
+	} else if exists {
+		if err := s.fs.Delete(target); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to remove replacement during rollback: %w", err))
+		}
+	}
+	if len(rollbackErrors) == 0 {
+		if err := s.fs.Move(backupPath, target); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to restore original target: %w", err))
+		}
+	}
+	return errors.Join(rollbackErrors...)
 }
 
 // shouldIgnoreFile applies Git-compatible ignore rules to a relative path.

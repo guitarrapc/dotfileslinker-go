@@ -237,6 +237,31 @@ func TestDeleteRemovesEntriesAndPreservesSymlinkTarget(t *testing.T) {
 	}
 }
 
+func TestMoveRenamesSymlinkWithoutMovingTarget(t *testing.T) {
+	root := t.TempDir()
+	fs := NewDefaultFileSystem()
+	target := writeTestFile(t, filepath.Join(root, "target.txt"), "preserved")
+	link := filepath.Join(root, "link.txt")
+	movedLink := filepath.Join(root, "moved-link.txt")
+	if err := fs.CreateFileSymlink(link, target); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+
+	if err := fs.Move(link, movedLink); err != nil {
+		t.Fatalf("Move() error = %v", err)
+	}
+	if got := fs.GetLinkTarget(movedLink); got != target {
+		t.Fatalf("moved link target = %q, want %q", got, target)
+	}
+	if !fs.FileExists(target) {
+		t.Fatal("Move(link) moved or removed the link target")
+	}
+	exists, err := fs.PathExists(link)
+	if err != nil || exists {
+		t.Fatalf("original link remains after Move(): exists = %v, error = %v", exists, err)
+	}
+}
+
 func TestGetLinkTargetReturnsEmptyForNonLinks(t *testing.T) {
 	root := t.TempDir()
 	file := writeTestFile(t, filepath.Join(root, "regular.txt"), "content")

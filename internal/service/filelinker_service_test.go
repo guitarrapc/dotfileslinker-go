@@ -300,6 +300,74 @@ func TestLinkFileReturnsPathInspectionError(t *testing.T) {
 	}
 }
 
+func TestLinkFileRestoresExistingTargetWhenLinkCreationFails(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	source := filepath.Clean("/repo/.bashrc")
+	target := filepath.Clean("/home/user/.bashrc")
+	backup := target + ".dotfileslinker-backup"
+	creationError := errors.New("symlink creation failed")
+	fs.AddFile(source, "new")
+	fs.AddFile(target, "original")
+	fs.SetErrorForOperation("CreateFileSymlink:"+target, creationError)
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.linkFile(source, target, true, false)
+	if !errors.Is(err, creationError) {
+		t.Fatalf("linkFile() error = %v, want wrapped %v", err, creationError)
+	}
+	if got := fs.Files[target]; got != "original" {
+		t.Fatalf("original target was not restored: got %q", got)
+	}
+	if _, exists := fs.Files[backup]; exists {
+		t.Fatal("temporary backup remains after successful rollback")
+	}
+	if got := fs.GetLinkTarget(target); got != "" {
+		t.Fatalf("failed replacement remains at target: %q", got)
+	}
+
+	wantOperations := []string{
+		"Move: " + target + " -> " + backup,
+		"Move: " + backup + " -> " + target,
+	}
+	for _, want := range wantOperations {
+		if !containsOperation(fs.OperationLog, want) {
+			t.Errorf("operation log does not contain %q: %v", want, fs.OperationLog)
+		}
+	}
+}
+
+func TestLinkFileRemovesBackupAfterSuccessfulReplacement(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	source := filepath.Clean("/repo/.bashrc")
+	target := filepath.Clean("/home/user/.bashrc")
+	backup := target + ".dotfileslinker-backup"
+	fs.AddFile(source, "new")
+	fs.AddFile(target, "original")
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	if err := service.linkFile(source, target, true, false); err != nil {
+		t.Fatalf("linkFile() error = %v", err)
+	}
+	if got := fs.GetLinkTarget(target); got != source {
+		t.Fatalf("link target = %q, want %q", got, source)
+	}
+	if _, exists := fs.Files[backup]; exists {
+		t.Fatal("temporary backup remains after successful replacement")
+	}
+	if !containsOperation(fs.OperationLog, "Delete: "+backup) {
+		t.Fatalf("backup was not deleted: %v", fs.OperationLog)
+	}
+}
+
+func containsOperation(operations []string, want string) bool {
+	for _, operation := range operations {
+		if operation == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestFileLinkerService_LoadIgnorePatterns(t *testing.T) {
 	// Setup test environment
 	fs := infrastructure.NewMockFileSystem()
