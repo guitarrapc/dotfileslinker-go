@@ -87,7 +87,7 @@ func (m *MockFileSystem) CreateDirectorySymlink(linkPath string, target string) 
 }
 
 // EnumerateFiles lists files matching a pattern
-func (m *MockFileSystem) EnumerateFiles(root string, pattern string, recursive bool) ([]string, error) {
+func (m *MockFileSystem) EnumerateFiles(root string, pattern string, recursive bool, shouldSkipDirectory func(path string) bool) ([]string, error) {
 	key := "EnumerateFiles:" + root + ":" + pattern + ":" + getBoolStr(recursive)
 	m.OperationLog = append(m.OperationLog, key)
 	if err, exists := m.ErrorResponses[key]; exists {
@@ -96,9 +96,45 @@ func (m *MockFileSystem) EnumerateFiles(root string, pattern string, recursive b
 
 	files, exists := m.FileEnumerations[root+":"+pattern+":"+getBoolStr(recursive)]
 	if exists {
-		return files, nil
+		if shouldSkipDirectory == nil {
+			return files, nil
+		}
+
+		filtered := make([]string, 0, len(files))
+		for _, file := range files {
+			if !hasSkippedParent(root, file, shouldSkipDirectory) {
+				filtered = append(filtered, file)
+			}
+		}
+		return filtered, nil
 	}
 	return []string{}, nil
+}
+
+func hasSkippedParent(root, file string, shouldSkipDirectory func(path string) bool) bool {
+	root = filepath.Clean(root)
+	directory := filepath.Dir(filepath.Clean(file))
+	var parents []string
+
+	for directory != root {
+		relative, err := filepath.Rel(root, directory)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return false
+		}
+		parents = append(parents, directory)
+		next := filepath.Dir(directory)
+		if next == directory {
+			return false
+		}
+		directory = next
+	}
+
+	for i := len(parents) - 1; i >= 0; i-- {
+		if shouldSkipDirectory(parents[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 // EnsureDirectory creates a directory if it doesn't exist

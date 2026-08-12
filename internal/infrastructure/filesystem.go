@@ -21,8 +21,9 @@ type FileSystem interface {
 	// CreateDirectorySymlink creates a symbolic link to a directory at the specified path.
 	CreateDirectorySymlink(linkPath string, target string) error
 
-	// EnumerateFiles enumerates files that match a specific pattern in a specified directory.
-	EnumerateFiles(root string, pattern string, recursive bool) ([]string, error)
+	// EnumerateFiles enumerates files that match a pattern. A non-nil callback
+	// can prune recursive traversal by returning true for a directory.
+	EnumerateFiles(root string, pattern string, recursive bool, shouldSkipDirectory func(path string) bool) ([]string, error)
 
 	// EnsureDirectory creates a directory at the specified path if it does not already exist.
 	EnsureDirectory(path string) error

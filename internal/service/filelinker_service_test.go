@@ -312,6 +312,13 @@ func TestFileLinkerService_GitIgnoreSemantics(t *testing.T) {
 	if target := fs.GetLinkTarget(wantLink); target != reincludedByLaterRule {
 		t.Errorf("re-included path target = %q, want %q", target, reincludedByLaterRule)
 	}
+
+	ignoredFileCheck := "DirectoryExists: " + ignoredByDirectory
+	for _, operation := range fs.OperationLog {
+		if operation == ignoredFileCheck {
+			t.Fatalf("file inside ignored directory reached service filtering: %s", operation)
+		}
+	}
 }
 
 // Test dry run functionality

@@ -96,7 +96,7 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 
 // processRepositoryRoot processes and links files in the repository root.
 func (s *FileLinkerService) processRepositoryRoot(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
-	files, err := s.fs.EnumerateFiles(repoRoot, ".*", false)
+	files, err := s.fs.EnumerateFiles(repoRoot, ".*", false, nil)
 	if err != nil {
 		return fmt.Errorf("failed to enumerate files in repository root: %w", err)
 	}
@@ -162,7 +162,14 @@ func (s *FileLinkerService) processDirectory(repoRoot string, srcDir string, des
 	}
 
 	s.logger.Info(fmt.Sprintf("Processing %s directory: %s", srcDir, srcPath))
-	allFiles, err := s.fs.EnumerateFiles(srcPath, "*", true)
+	shouldSkipDirectory := func(directory string) bool {
+		relPath, err := filepath.Rel(repoRoot, directory)
+		if err != nil {
+			return false
+		}
+		return shouldIgnoreFile(relPath, true, ignoreMatcher)
+	}
+	allFiles, err := s.fs.EnumerateFiles(srcPath, "*", true, shouldSkipDirectory)
 	if err != nil {
 		return fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
 	}

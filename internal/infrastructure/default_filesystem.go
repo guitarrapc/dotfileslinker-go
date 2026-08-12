@@ -57,15 +57,19 @@ func (dfs *DefaultFileSystem) CreateDirectorySymlink(linkPath string, target str
 }
 
 // EnumerateFiles enumerates files that match a specific pattern in a specified directory.
-func (dfs *DefaultFileSystem) EnumerateFiles(root string, pattern string, recursive bool) ([]string, error) {
+func (dfs *DefaultFileSystem) EnumerateFiles(root string, pattern string, recursive bool, shouldSkipDirectory func(path string) bool) ([]string, error) {
 	var files []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
 		// ディレクトリをスキップ
-		if info.IsDir() {
+		if entry.IsDir() {
+			if path != root && shouldSkipDirectory != nil && shouldSkipDirectory(path) {
+				return filepath.SkipDir
+			}
+
 			// 再帰的に検索しない場合は、ルートディレクトリ以外のサブディレクトリをスキップ
 			if !recursive && path != root {
 				return filepath.SkipDir
