@@ -95,6 +95,39 @@ func TestPathEquals(t *testing.T) {
 	}
 }
 
+func TestLinkTargetEquals(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "relative-link")
+	linkPath := filepath.Join(root, "home", ".config", "settings.json")
+	expectedTarget := filepath.Join(root, "repo", "settings.json")
+	relativeTarget, err := filepath.Rel(filepath.Dir(linkPath), expectedTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name           string
+		linkPath       string
+		linkTarget     string
+		expectedTarget string
+		want           bool
+	}{
+		{name: "relative target", linkPath: linkPath, linkTarget: relativeTarget, expectedTarget: expectedTarget, want: true},
+		{name: "absolute target", linkPath: linkPath, linkTarget: expectedTarget, expectedTarget: expectedTarget, want: true},
+		{name: "different target", linkPath: linkPath, linkTarget: relativeTarget, expectedTarget: filepath.Join(root, "repo", "other.json"), want: false},
+		{name: "empty link path", linkTarget: relativeTarget, expectedTarget: expectedTarget, want: false},
+		{name: "empty link target", linkPath: linkPath, expectedTarget: expectedTarget, want: false},
+		{name: "empty expected target", linkPath: linkPath, linkTarget: relativeTarget, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := LinkTargetEquals(tt.linkPath, tt.linkTarget, tt.expectedTarget); got != tt.want {
+				t.Errorf("LinkTargetEquals(%q, %q, %q) = %v, want %v", tt.linkPath, tt.linkTarget, tt.expectedTarget, got, tt.want)
+			}
+		})
+	}
+}
+
 // Test helper: Get current working directory and panic on error
 func mustGetwd() string {
 	dir, err := os.Getwd()

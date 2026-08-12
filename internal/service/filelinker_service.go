@@ -261,7 +261,7 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 		currentLinkTarget := s.fs.GetLinkTarget(target)
 
 		// If the target is a symlink and points to the same file, do nothing
-		if currentLinkTarget != "" && util.PathEquals(currentLinkTarget, source) {
+		if util.LinkTargetEquals(target, currentLinkTarget, source) {
 			if dryRun {
 				s.logger.Success(fmt.Sprintf("[DRY-RUN] Would skip already linked: %s -> %s", target, source))
 			} else {

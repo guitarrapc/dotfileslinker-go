@@ -25,11 +25,40 @@ func PathEquals(a, b string) bool {
 	cleanA := filepath.Clean(absA)
 	cleanB := filepath.Clean(absB)
 
-	// On Windows, perform case-insensitive comparison
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(cleanA, cleanB)
+	return pathsEqual(cleanA, cleanB)
+}
+
+// LinkTargetEquals compares a symbolic link target with an expected path.
+// Relative link targets are resolved from the symbolic link's parent directory.
+func LinkTargetEquals(linkPath, linkTarget, expectedTarget string) bool {
+	if linkPath == "" || linkTarget == "" || expectedTarget == "" {
+		return false
 	}
 
-	// On other platforms, perform case-sensitive comparison
-	return cleanA == cleanB
+	fullLinkPath, err := filepath.Abs(linkPath)
+	if err != nil {
+		return false
+	}
+	resolvedLinkTarget := linkTarget
+	if !filepath.IsAbs(resolvedLinkTarget) {
+		resolvedLinkTarget = filepath.Join(filepath.Dir(fullLinkPath), resolvedLinkTarget)
+	}
+
+	fullLinkTarget, err := filepath.Abs(resolvedLinkTarget)
+	if err != nil {
+		return false
+	}
+	fullExpectedTarget, err := filepath.Abs(expectedTarget)
+	if err != nil {
+		return false
+	}
+
+	return pathsEqual(filepath.Clean(fullLinkTarget), filepath.Clean(fullExpectedTarget))
+}
+
+func pathsEqual(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }

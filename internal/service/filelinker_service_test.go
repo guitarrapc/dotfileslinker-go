@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,8 +50,9 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 	logger := NewMockLogger()
 
 	// Basic path settings for tests
-	repoRoot := "/repo"
-	userHome := "/home/user"
+	testRoot := filepath.Join(os.TempDir(), "dotfileslinker", "link-dotfiles")
+	repoRoot := filepath.Join(testRoot, "repo")
+	userHome := filepath.Join(testRoot, "home", "user")
 	ignoreFileName := ".ignore"
 
 	// Set up files and directory structure for testing
@@ -220,6 +222,33 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 			t.Error("Skip log not found")
 		}
 	})
+}
+
+func TestLinkFileSkipsEquivalentRelativeSymlink(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	logger := NewMockLogger()
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "relative-link-service")
+	source := filepath.Join(root, "repo", ".settings")
+	target := filepath.Join(root, "home", ".settings")
+	relativeTarget, err := filepath.Rel(filepath.Dir(target), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.AddFile(source, "settings")
+	fs.SymLinks[target] = relativeTarget
+	service := NewFileLinkerService(fs, logger)
+
+	if err := service.linkFile(source, target, false, false); err != nil {
+		t.Fatalf("linkFile() error = %v", err)
+	}
+	if got := fs.GetLinkTarget(target); got != relativeTarget {
+		t.Errorf("relative link target changed: got %q, want %q", got, relativeTarget)
+	}
+	for _, operation := range fs.OperationLog {
+		if operation == "Delete: "+target {
+			t.Fatalf("equivalent relative symlink was deleted: %s", operation)
+		}
+	}
 }
 
 func TestLinkFileDanglingSymlink(t *testing.T) {
