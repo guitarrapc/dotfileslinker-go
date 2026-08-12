@@ -25,9 +25,9 @@ type FileSystem interface {
 	// Delete deletes the specified file or empty directory.
 	Delete(path string) error
 
-	// RemoveAll deletes the specified path and all of its children without
-	// following symbolic links.
-	RemoveAll(path string) error
+	// DeleteBackup deletes a generated replacement backup. Implementations must
+	// verify that backupPath belongs to originalPath before recursive deletion.
+	DeleteBackup(backupPath string, originalPath string) error
 
 	// Move renames a file, directory, or symbolic link without following it.
 	Move(sourcePath string, destinationPath string) error

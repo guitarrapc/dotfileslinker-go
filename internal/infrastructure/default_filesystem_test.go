@@ -280,6 +280,45 @@ func TestRemoveAllRemovesNonEmptyDirectory(t *testing.T) {
 	}
 }
 
+func TestDeleteBackupRemovesGeneratedNonEmptyDirectory(t *testing.T) {
+	root := t.TempDir()
+	original := filepath.Join(root, "target")
+	backup := original + ".dotfileslinker-backup.1"
+	writeTestFile(t, filepath.Join(backup, "nested", "file.txt"), "content")
+
+	if err := NewDefaultFileSystem().DeleteBackup(backup, original); err != nil {
+		t.Fatalf("DeleteBackup() error = %v", err)
+	}
+	if _, err := os.Lstat(backup); !os.IsNotExist(err) {
+		t.Fatalf("backup still exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestDeleteBackupRejectsUnrelatedPath(t *testing.T) {
+	root := t.TempDir()
+	original := filepath.Join(root, "target")
+	unrelated := filepath.Join(root, "unrelated")
+	file := writeTestFile(t, filepath.Join(unrelated, "file.txt"), "preserved")
+
+	if err := NewDefaultFileSystem().DeleteBackup(unrelated, original); err == nil {
+		t.Fatal("DeleteBackup() accepted an unrelated path")
+	}
+	if content, err := os.ReadFile(file); err != nil || string(content) != "preserved" {
+		t.Fatalf("unrelated path was modified: content = %q, error = %v", content, err)
+	}
+}
+
+func TestDeleteBackupRejectsInvalidNumericSuffix(t *testing.T) {
+	root := t.TempDir()
+	original := filepath.Join(root, "target")
+	for _, suffix := range []string{".0", ".-1", ".1-extra", ".not-a-number"} {
+		backup := original + ".dotfileslinker-backup" + suffix
+		if err := NewDefaultFileSystem().DeleteBackup(backup, original); err == nil {
+			t.Errorf("DeleteBackup() accepted invalid suffix %q", suffix)
+		}
+	}
+}
+
 func TestMoveRenamesSymlinkWithoutMovingTarget(t *testing.T) {
 	root := t.TempDir()
 	fs := NewDefaultFileSystem()

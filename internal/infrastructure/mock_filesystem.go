@@ -106,6 +106,34 @@ func (m *MockFileSystem) RemoveAll(path string) error {
 	return nil
 }
 
+// DeleteBackup verifies and removes a generated replacement backup.
+func (m *MockFileSystem) DeleteBackup(backupPath string, originalPath string) error {
+	operation := "DeleteBackup: " + backupPath + " <- " + originalPath
+	m.OperationLog = append(m.OperationLog, operation)
+	if err, exists := m.ErrorResponses["DeleteBackup:"+backupPath]; exists {
+		return err
+	}
+	if !isGeneratedBackupPath(filepath.Clean(backupPath), filepath.Clean(originalPath)+".dotfileslinker-backup") {
+		return errors.New("backup path was not generated from original path")
+	}
+	for file := range m.Files {
+		if isSameOrDescendant(file, backupPath) {
+			delete(m.Files, file)
+		}
+	}
+	for directory := range m.Directories {
+		if isSameOrDescendant(directory, backupPath) {
+			delete(m.Directories, directory)
+		}
+	}
+	for link := range m.SymLinks {
+		if isSameOrDescendant(link, backupPath) {
+			delete(m.SymLinks, link)
+		}
+	}
+	return nil
+}
+
 // Move renames a file, directory, or symbolic link.
 func (m *MockFileSystem) Move(sourcePath string, destinationPath string) error {
 	operation := "Move: " + sourcePath + " -> " + destinationPath

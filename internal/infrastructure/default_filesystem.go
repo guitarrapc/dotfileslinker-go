@@ -1,8 +1,11 @@
 package infrastructure
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -61,6 +64,51 @@ func (dfs *DefaultFileSystem) Delete(path string) error {
 // RemoveAll deletes the specified path and all of its children without following symbolic links.
 func (dfs *DefaultFileSystem) RemoveAll(path string) error {
 	return os.RemoveAll(path)
+}
+
+// DeleteBackup deletes only a backup path generated from originalPath.
+func (dfs *DefaultFileSystem) DeleteBackup(backupPath string, originalPath string) error {
+	fullBackupPath, err := filepath.Abs(backupPath)
+	if err != nil {
+		return err
+	}
+	fullOriginalPath, err := filepath.Abs(originalPath)
+	if err != nil {
+		return err
+	}
+	fullBackupPath = filepath.Clean(fullBackupPath)
+	fullOriginalPath = filepath.Clean(fullOriginalPath)
+	if !isGeneratedBackupPath(fullBackupPath, fullOriginalPath+".dotfileslinker-backup") {
+		return fmt.Errorf("refusing to recursively delete %q because it is not a generated backup for %q", backupPath, originalPath)
+	}
+
+	info, err := os.Lstat(fullBackupPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+		return os.RemoveAll(fullBackupPath)
+	}
+	return os.Remove(fullBackupPath)
+}
+
+func isGeneratedBackupPath(backupPath, expectedBackupPath string) bool {
+	equal := func(left, right string) bool { return left == right }
+	if runtime.GOOS == "windows" {
+		equal = strings.EqualFold
+	}
+	if equal(backupPath, expectedBackupPath) {
+		return true
+	}
+	prefix := expectedBackupPath + "."
+	if len(backupPath) <= len(prefix) || !equal(backupPath[:len(prefix)], prefix) {
+		return false
+	}
+	suffix, err := strconv.ParseUint(backupPath[len(prefix):], 10, 32)
+	return err == nil && suffix > 0
 }
 
 // Move renames a file, directory, or symbolic link without following it.

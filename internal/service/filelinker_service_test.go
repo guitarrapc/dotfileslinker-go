@@ -483,7 +483,7 @@ func TestExecuteLinkPlanContinuesAfterParentCreationFailure(t *testing.T) {
 		{source: rootSource, target: rootTarget, ensureParent: true},
 	}
 
-	err := service.executeLinkPlan(plan, false)
+	err := service.executor.execute(plan, false, false)
 	if !errors.Is(err, permissionError) {
 		t.Fatalf("executeLinkPlan() error = %v, want wrapped %v", err, permissionError)
 	}
@@ -532,7 +532,7 @@ func TestLinkFileSkipsEquivalentRelativeSymlink(t *testing.T) {
 	fs.SymLinks[target] = relativeTarget
 	service := NewFileLinkerService(fs, logger)
 
-	if err := service.linkFile(source, target, false, false); err != nil {
+	if err := service.executor.linkFile(source, target, false, false); err != nil {
 		t.Fatalf("linkFile() error = %v", err)
 	}
 	if got := fs.GetLinkTarget(target); got != relativeTarget {
@@ -565,7 +565,7 @@ func TestLinkFileDanglingSymlink(t *testing.T) {
 			fs.SymLinks[target] = filepath.Clean("/missing")
 			service := NewFileLinkerService(fs, NewMockLogger())
 
-			err := service.linkFile(source, target, tt.overwrite, false)
+			err := service.executor.linkFile(source, target, tt.overwrite, false)
 			if (err != nil) != tt.wantError {
 				t.Fatalf("linkFile() error = %v, wantError %v", err, tt.wantError)
 			}
@@ -585,7 +585,7 @@ func TestLinkFileReturnsPathInspectionError(t *testing.T) {
 	fs.SetErrorForOperation("PathExists:"+target, inspectionError)
 	service := NewFileLinkerService(fs, NewMockLogger())
 
-	err := service.linkFile(source, target, true, false)
+	err := service.executor.linkFile(source, target, true, false)
 	if !errors.Is(err, inspectionError) {
 		t.Fatalf("linkFile() error = %v, want wrapped %v", err, inspectionError)
 	}
@@ -605,7 +605,7 @@ func TestLinkFileRestoresExistingTargetWhenLinkCreationFails(t *testing.T) {
 	fs.SetErrorForOperation("CreateFileSymlink:"+target, creationError)
 	service := NewFileLinkerService(fs, NewMockLogger())
 
-	err := service.linkFile(source, target, true, false)
+	err := service.executor.linkFile(source, target, true, false)
 	if !errors.Is(err, creationError) {
 		t.Fatalf("linkFile() error = %v, want wrapped %v", err, creationError)
 	}
@@ -639,7 +639,7 @@ func TestLinkFileRemovesBackupAfterSuccessfulReplacement(t *testing.T) {
 	fs.AddFile(target, "original")
 	service := NewFileLinkerService(fs, NewMockLogger())
 
-	if err := service.linkFile(source, target, true, false); err != nil {
+	if err := service.executor.linkFile(source, target, true, false); err != nil {
 		t.Fatalf("linkFile() error = %v", err)
 	}
 	if got := fs.GetLinkTarget(target); got != source {
@@ -648,7 +648,7 @@ func TestLinkFileRemovesBackupAfterSuccessfulReplacement(t *testing.T) {
 	if _, exists := fs.Files[backup]; exists {
 		t.Fatal("temporary backup remains after successful replacement")
 	}
-	if !containsOperation(fs.OperationLog, "RemoveAll: "+backup) {
+	if !containsOperation(fs.OperationLog, "DeleteBackup: "+backup+" <- "+target) {
 		t.Fatalf("backup was not deleted: %v", fs.OperationLog)
 	}
 }
@@ -679,7 +679,7 @@ func TestLinkFileReplacesNonEmptyDirectory(t *testing.T) {
 	}
 
 	service := NewFileLinkerService(fs, NewNullLogger())
-	if err := service.linkFile(source, target, true, false); err != nil {
+	if err := service.executor.linkFile(source, target, true, false); err != nil {
 		t.Fatalf("linkFile() error = %v", err)
 	}
 	if got := fs.GetLinkTarget(target); got != source {
@@ -699,10 +699,10 @@ func TestLinkFileLeavesAppliedLinkAndBackupWhenBackupCleanupFails(t *testing.T) 
 	cleanupError := errors.New("cleanup failed")
 	fs.AddFile(source, "new")
 	fs.AddFile(target, "original")
-	fs.SetErrorForOperation("RemoveAll:"+backup, cleanupError)
+	fs.SetErrorForOperation("DeleteBackup:"+backup, cleanupError)
 	service := NewFileLinkerService(fs, NewMockLogger())
 
-	err := service.linkFile(source, target, true, false)
+	err := service.executor.linkFile(source, target, true, false)
 	if !errors.Is(err, cleanupError) {
 		t.Fatalf("linkFile() error = %v, want wrapped %v", err, cleanupError)
 	}
@@ -743,7 +743,7 @@ func TestFileLinkerService_LoadIgnorePatterns(t *testing.T) {
 	service := NewFileLinkerService(fs, logger)
 
 	t.Run("Loading ignore list", func(t *testing.T) {
-		patterns, err := service.loadIgnorePatterns(ignoreFilePath)
+		patterns, err := service.builder.loadIgnorePatterns(ignoreFilePath)
 		if err != nil {
 			t.Fatalf("loadIgnorePatterns() error = %v", err)
 		}
@@ -767,7 +767,7 @@ func TestFileLinkerService_LoadIgnorePatterns(t *testing.T) {
 
 		// No ignore file setup
 
-		patterns, err := service.loadIgnorePatterns(ignoreFilePath)
+		patterns, err := service.builder.loadIgnorePatterns(ignoreFilePath)
 		if err != nil {
 			t.Fatalf("loadIgnorePatterns() error = %v", err)
 		}
@@ -866,8 +866,8 @@ func TestCollectLinkPlanEntriesReadsEachDirectoryOnce(t *testing.T) {
 	fs.AddFile(filepath.Join(nestedRoot, "app", "config.json"), "content")
 	service := NewFileLinkerService(fs, NewNullLogger())
 
-	var plan []linkPlanEntry
-	if _, err := service.collectLinkPlanEntries(&plan, repoRoot, homeRoot, filepath.Clean("/home/user"), newIgnoreMatcher(nil)); err != nil {
+	var plan linkPlan
+	if _, err := service.builder.collectLinkPlanEntries(&plan, repoRoot, homeRoot, filepath.Clean("/home/user"), newIgnoreMatcher(nil)); err != nil {
 		t.Fatalf("collectLinkPlanEntries() error = %v", err)
 	}
 
