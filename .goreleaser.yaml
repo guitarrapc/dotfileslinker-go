@@ -45,6 +45,15 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+# Generate an artifact-specific SPDX SBOM for every release archive.
+# GoReleaser invokes the pinned Syft installed by the release workflow.
+sboms:
+  - id: archives
+    artifacts: archive
+    documents:
+      - "${artifact}.spdx.json"
+    disable: false
+
 # Release configuration - simplified to work with GitHub auto-generated release notes
 release:
   draft: true
@@ -57,17 +66,3 @@ gomod:
   env:
     - GOSUMDB=sum.golang.org
     - GONOSUMDB=github.com/guitarrapc/dotfileslinker-go
-
-# Sign the checksum with cosign
-signs:
-  - cmd: cosign
-    signature: "${artifact}.sig"
-    artifacts: checksum
-    args:
-      - "sign-blob"
-      - "--yes"
-      - "--key=cosign.key"
-      - "--output-signature=${signature}"
-      - "${artifact}"
-    stdin: "{{ .Env.COSIGN_PASSWORD }}"
-    id: checksum

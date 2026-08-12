@@ -10,7 +10,10 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    timeout-minutes: 10
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -21,33 +24,57 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.24"
-      # Cosign installation for signing artifacts
-      - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@e8d2a6937ecead383dfe75190d104edd1f9c5751 # v0.16.0
         with:
-          cosign-release: v2.5.0
-      # Setup Cosign keys for signing
-      # seiton: disable-step unredacted-secrets
-      - name: Setup Cosign keys
-        run: |
-          echo "${SYNCED_COSIGN_PRIVATE_KEY}" > cosign.key
-          chmod 600 cosign.key
-        env:
-          SYNCED_COSIGN_PRIVATE_KEY: ${{ secrets.SYNCED_COSIGN_PRIVATE_KEY }}
+          syft-version: v1.50.0
       # Run GoReleaser to build and upload assets to the release
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version: v2.17.1
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COSIGN_PASSWORD: ${{ secrets.SYNCED_COSIGN_PASSWORD }}
-      # Clean up sensitive files
-      - name: Clean up
-        if: always()
-        run: rm -f cosign.key
+      - name: Resolve release version
+        id: release_version
+        shell: bash
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ./dist/checksums.txt
+      - name: Attest Linux amd64 SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_linux_amd64.tar.gz
+          sbom-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_linux_amd64.tar.gz.spdx.json
+      - name: Attest Linux arm64 SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_linux_arm64.tar.gz
+          sbom-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_linux_arm64.tar.gz.spdx.json
+      - name: Attest Windows amd64 SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_windows_amd64.zip
+          sbom-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_windows_amd64.zip.spdx.json
+      - name: Attest Windows arm64 SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_windows_arm64.zip
+          sbom-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_windows_arm64.zip.spdx.json
+      - name: Attest macOS amd64 SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_darwin_amd64.tar.gz
+          sbom-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_darwin_amd64.tar.gz.spdx.json
+      - name: Attest macOS arm64 SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_darwin_arm64.tar.gz
+          sbom-path: ./dist/dotfileslinker_${{ steps.release_version.outputs.value }}_darwin_arm64.tar.gz.spdx.json
       - name: Update Release Notes with gh CLI
         run: gh release edit "$TAG_NAME" --draft --notes-file <(gh api repos/${{ github.repository }}/releases/generate-notes -F "tag_name=$TAG_NAME" -q .body)
         env:

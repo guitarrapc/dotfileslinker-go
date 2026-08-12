@@ -351,13 +351,20 @@ Windows DefenderなどのアンチウイルスソフトウェアがGoのバイ�
    ```
 3. 計算されたハッシュ値と `checksums.txt` の値を比較します
 
-### 署名済みリリース
+### リリースのAttestationとSBOM
 
-v0.2.1以降、リリースバイナリはCosignで署名されています。Cosignがインストールされている場合、次のコマンドで署名を検証できます：
+各リリースアーカイブには、GitHubによるビルドprovenanceとSBOMのattestationが付与されます。また、アーカイブごとのSPDX JSON SBOMがリリース成果物として公開されます。
+
+アーカイブがこのリポジトリのReleaseワークフローで生成されたことを検証します：
 
 ```bash
-# checksumファイルの署名を検証
-cosign verify-blob --signature checksums.txt.sig checksums.txt
+gh attestation verify dotfileslinker_x.y.z_windows_amd64.zip -R guitarrapc/dotfileslinker-go
+```
+
+SPDX SBOMのattestationを検証し、内容を表示します：
+
+```bash
+gh attestation verify dotfileslinker_x.y.z_windows_amd64.zip -R guitarrapc/dotfileslinker-go --predicate-type https://spdx.dev/Document/v2.3 --format json --jq '.[].verificationResult.statement.predicate'
 ```
 
 ### 問題が解決しない場合

@@ -328,13 +328,20 @@ To verify the integrity of the downloaded binary:
    ```
 3. Compare the calculated hash with the value in `checksums.txt`
 
-### Signed Releases
+### Attested Releases and SBOMs
 
-Starting from v0.2.1, release binaries are signed with Cosign. You can verify the signature if you have Cosign installed:
+Each release archive has GitHub build-provenance and SBOM attestations. The release also contains an artifact-specific SPDX JSON SBOM alongside every archive.
+
+Verify that an archive was produced by this repository's release workflow:
 
 ```bash
-# Verify the checksums file signature
-cosign verify-blob --signature checksums.txt.sig checksums.txt
+gh attestation verify dotfileslinker_x.y.z_windows_amd64.zip -R guitarrapc/dotfileslinker-go
+```
+
+Verify and inspect its SPDX SBOM attestation:
+
+```bash
+gh attestation verify dotfileslinker_x.y.z_windows_amd64.zip -R guitarrapc/dotfileslinker-go --predicate-type https://spdx.dev/Document/v2.3 --format json --jq '.[].verificationResult.statement.predicate'
 ```
 
 ### If Problems Persist
