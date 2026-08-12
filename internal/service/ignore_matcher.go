@@ -136,34 +136,39 @@ func (p ignorePattern) matches(pathSegments []string, isDir bool) bool {
 }
 
 func matchPathSegments(pattern, value []string) bool {
-	return matchPathSegmentsAt(pattern, value, 0, 0)
-}
+	patternIndex, valueIndex := 0, 0
+	// Remember the most recent ** checkpoint. On a later mismatch, let that
+	// ** consume one more segment instead of recursively trying every split.
+	doubleStarPatternIndex, doubleStarValueIndex := -1, -1
 
-func matchPathSegmentsAt(pattern, value []string, patternIndex, valueIndex int) bool {
-	for patternIndex < len(pattern) && valueIndex < len(value) {
-		if pattern[patternIndex] == "**" {
-			if patternIndex+1 == len(pattern) {
-				return true
+	for valueIndex < len(value) {
+		if patternIndex < len(pattern) && pattern[patternIndex] == "**" {
+			for patternIndex < len(pattern) && pattern[patternIndex] == "**" {
+				patternIndex++
 			}
-			for nextValueIndex := valueIndex; nextValueIndex <= len(value); nextValueIndex++ {
-				if matchPathSegmentsAt(pattern, value, patternIndex+1, nextValueIndex) {
-					return true
-				}
-			}
-			return false
+			doubleStarPatternIndex = patternIndex
+			doubleStarValueIndex = valueIndex
+			continue
 		}
 
-		if !wildcardMatch(value[valueIndex], pattern[patternIndex]) {
+		if patternIndex < len(pattern) && wildcardMatch(value[valueIndex], pattern[patternIndex]) {
+			patternIndex++
+			valueIndex++
+			continue
+		}
+
+		if doubleStarPatternIndex < 0 || doubleStarValueIndex >= len(value) {
 			return false
 		}
-		patternIndex++
-		valueIndex++
+		doubleStarValueIndex++
+		valueIndex = doubleStarValueIndex
+		patternIndex = doubleStarPatternIndex
 	}
 
 	for patternIndex < len(pattern) && pattern[patternIndex] == "**" {
 		patternIndex++
 	}
-	return patternIndex == len(pattern) && valueIndex == len(value)
+	return patternIndex == len(pattern)
 }
 
 // wildcardMatch matches one path segment without allocating temporary strings.

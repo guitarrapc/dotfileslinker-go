@@ -92,3 +92,45 @@ func TestWildcardMatch(t *testing.T) {
 		}
 	}
 }
+
+func TestMatchPathSegments(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern []string
+		value   []string
+		want    bool
+	}{
+		{name: "double star matches zero segments", pattern: []string{"logs", "**", "app.log"}, value: []string{"logs", "app.log"}, want: true},
+		{name: "double star matches multiple segments", pattern: []string{"logs", "**", "app.log"}, value: []string{"logs", "2026", "08", "app.log"}, want: true},
+		{name: "backtracks to double star", pattern: []string{"**", "cache", "target.txt"}, value: []string{"cache", "other", "cache", "target.txt"}, want: true},
+		{name: "consecutive double stars", pattern: []string{"root", "**", "**", "target.txt"}, value: []string{"root", "a", "b", "target.txt"}, want: true},
+		{name: "missing suffix", pattern: []string{"root", "**", "target.txt"}, value: []string{"root", "a", "other.txt"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchPathSegments(tt.pattern, tt.value); got != tt.want {
+				t.Errorf("matchPathSegments(%q, %q) = %v, want %v", tt.pattern, tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchPathSegmentsAvoidsExponentialBacktracking(t *testing.T) {
+	const count = 32
+	pattern := make([]string, 0, count*2+1)
+	value := make([]string, count)
+	for i := range count {
+		pattern = append(pattern, "**", "segment")
+		value[i] = "segment"
+	}
+	pattern = append(pattern, "missing")
+
+	if matchPathSegments(pattern, value) {
+		t.Fatal("non-matching adversarial path unexpectedly matched")
+	}
+
+	if len(pattern) != count*2+1 {
+		t.Fatal("adversarial pattern was constructed incorrectly")
+	}
+}
