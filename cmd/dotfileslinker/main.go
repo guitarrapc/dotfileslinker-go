@@ -41,8 +41,16 @@ func main() {
 	svc := service.NewFileLinkerService(fs, logger)
 
 	// Get configuration from environment variables or use defaults
-	executionRoot := getEnvOrDefault("DOTFILES_ROOT", getCurrentDir())
-	userHome := getEnvOrDefault("DOTFILES_HOME", getUserHomeDir())
+	executionRoot, err := resolvePathOption(options.repositoryRoot, "DOTFILES_ROOT", getCurrentDir())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to resolve repository root: %v\n", err)
+		os.Exit(1)
+	}
+	userHome, err := resolvePathOption("", "DOTFILES_HOME", getUserHomeDir())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to resolve user home: %v\n", err)
+		os.Exit(1)
+	}
 	ignoreFileName := getEnvOrDefault("DOTFILES_IGNORE_FILE", "dotfiles_ignore")
 
 	logger.Info(fmt.Sprintf("Execution root: %s", executionRoot))
@@ -69,6 +77,7 @@ type cliOptions struct {
 	forceOverwrite bool
 	verbose        bool
 	dryRun         bool
+	repositoryRoot string
 }
 
 func parseOptions(args []string) (cliOptions, error) {
@@ -83,6 +92,7 @@ func parseOptions(args []string) (cliOptions, error) {
 	flags.BoolVar(&options.verbose, "v", false, "display detailed information")
 	flags.BoolVar(&options.dryRun, "dry-run", false, "simulate operations")
 	flags.BoolVar(&options.dryRun, "d", false, "simulate operations")
+	flags.StringVar(&options.repositoryRoot, "root", "", "directory containing dotfiles")
 
 	if err := flags.Parse(args); err != nil {
 		return cliOptions{}, err
@@ -90,7 +100,20 @@ func parseOptions(args []string) (cliOptions, error) {
 	if flags.NArg() != 0 {
 		return cliOptions{}, fmt.Errorf("unexpected argument %q", flags.Arg(0))
 	}
+	if flagWasSet(flags, "root") && options.repositoryRoot == "" {
+		return cliOptions{}, fmt.Errorf("--root requires a non-empty path")
+	}
 	return options, nil
+}
+
+func flagWasSet(flags *flag.FlagSet, name string) bool {
+	found := false
+	flags.Visit(func(current *flag.Flag) {
+		if current.Name == name {
+			found = true
+		}
+	})
+	return found
 }
 
 // handleError logs errors based on their type
@@ -116,6 +139,14 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+func resolvePathOption(optionValue, environmentKey, defaultValue string) (string, error) {
+	value := optionValue
+	if value == "" {
+		value = getEnvOrDefault(environmentKey, defaultValue)
+	}
+	return filepath.Abs(value)
 }
 
 // getCurrentDir gets the current working directory
@@ -150,13 +181,14 @@ Usage: %s [options]
 
 Options:
   --help, -h         Display this help message
+  --root PATH        Directory containing dotfiles (default: DOTFILES_ROOT or current directory)
   --force            Overwrite existing files or directories
   --verbose, -v      Display detailed information during execution
   --version          Display version information
   --dry-run, -d      Simulate the operations without making any changes
 
 Description:
-  This utility creates symbolic links from files in the current directory
+  This utility creates symbolic links from files in the selected repository
   to the appropriate locations in your home directory.
 
 Directory Structure:
@@ -169,16 +201,17 @@ Ignore File:
   Files listed in 'dotfiles_ignore' will be excluded from linking
 
 Environment Variables:
-  DOTFILES_ROOT            Directory containing dotfiles (default: current directory)
+  DOTFILES_ROOT            Directory containing dotfiles when --root is omitted
   DOTFILES_HOME            Target home directory (default: user's home directory)
   DOTFILES_IGNORE_FILE     Name of ignore file (default: dotfiles_ignore)
 
 Examples:
   %s              # Link dotfiles using default settings
+  %s --root PATH  # Link dotfiles from another directory
   %s --force      # Overwrite any existing files
   %s --verbose    # Show detailed information
   %s --dry-run    # Simulate the operations
-`, appName, appName, appName, appName, appName)
+`, appName, appName, appName, appName, appName, appName)
 }
 
 // displayVersion displays version information for the application
