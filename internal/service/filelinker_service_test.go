@@ -478,9 +478,9 @@ func TestExecuteLinkPlanContinuesAfterParentCreationFailure(t *testing.T) {
 	fs.AddFile(rootSource, "root")
 	fs.SetErrorForOperation("EnsureDirectory:"+rootParent, permissionError)
 	service := NewFileLinkerService(fs, NewMockLogger())
-	plan := []validatedLinkPlanEntry{
-		{linkPlanEntry: linkPlanEntry{source: homeSource, target: homeTarget, ensureParent: true}},
-		{linkPlanEntry: linkPlanEntry{source: rootSource, target: rootTarget, ensureParent: true}},
+	plan := []linkPlanEntry{
+		{source: homeSource, target: homeTarget, ensureParent: true},
+		{source: rootSource, target: rootTarget, ensureParent: true},
 	}
 
 	err := service.executeLinkPlan(plan, false)
@@ -866,7 +866,8 @@ func TestCollectLinkPlanEntriesReadsEachDirectoryOnce(t *testing.T) {
 	fs.AddFile(filepath.Join(nestedRoot, "app", "config.json"), "content")
 	service := NewFileLinkerService(fs, NewNullLogger())
 
-	if _, _, err := service.collectLinkPlanEntries(repoRoot, homeRoot, filepath.Clean("/home/user"), newIgnoreMatcher(nil)); err != nil {
+	var plan []linkPlanEntry
+	if _, err := service.collectLinkPlanEntries(&plan, repoRoot, homeRoot, filepath.Clean("/home/user"), newIgnoreMatcher(nil)); err != nil {
 		t.Fatalf("collectLinkPlanEntries() error = %v", err)
 	}
 

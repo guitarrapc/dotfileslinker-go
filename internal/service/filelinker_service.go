@@ -18,9 +18,12 @@ type FileLinkerService struct {
 }
 
 type linkPlanEntry struct {
-	source       string
-	target       string
-	ensureParent bool
+	source            string
+	target            string
+	ensureParent      bool
+	disposition       linkDisposition
+	sourceIsDirectory bool
+	validationError   error
 }
 
 type linkDisposition uint8
@@ -31,15 +34,8 @@ const (
 	linkDispositionReplace
 )
 
-type validatedLinkPlanEntry struct {
-	linkPlanEntry
-	disposition       linkDisposition
-	sourceIsDirectory bool
-	validationError   error
-}
-
 type appliedLinkPlanEntry struct {
-	validatedLinkPlanEntry
+	linkPlanEntry
 	backupPath string
 }
 
@@ -117,27 +113,23 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	s.logger.Verbosef("Loaded %d user-defined ignore patterns from %s", ignoreMatcher.count(), ignorePath)
 	s.logger.Verbosef("Using %d default ignore patterns", len(defaultIgnorePatterns))
 
-	rootEntries, err := s.planRepositoryRoot(repoRoot, userHome, ignoreMatcher)
-	if err != nil {
+	var plan []linkPlanEntry
+	if err := s.appendRepositoryRootPlan(&plan, repoRoot, userHome, ignoreMatcher); err != nil {
 		return err
 	}
-	homeEntries, err := s.planHomeDirectory(repoRoot, userHome, ignoreMatcher)
-	if err != nil {
+	if err := s.appendDirectoryPlan(&plan, repoRoot, "HOME", userHome, ignoreMatcher); err != nil {
 		return err
 	}
-	systemEntries, err := s.planRootDirectory(repoRoot, ignoreMatcher)
-	if err != nil {
+	if runtime.GOOS == "windows" {
+		s.logger.Info("Skipping ROOT directory processing on non-Unix platforms")
+	} else if err := s.appendDirectoryPlan(&plan, repoRoot, "ROOT", "/", ignoreMatcher); err != nil {
 		return err
 	}
-	plan := make([]linkPlanEntry, 0, len(rootEntries)+len(homeEntries)+len(systemEntries))
-	plan = append(plan, rootEntries...)
-	plan = append(plan, homeEntries...)
-	plan = append(plan, systemEntries...)
 	if err := validateLinkPlan(repoRoot, plan); err != nil {
 		return err
 	}
-	validatedPlan, _ := s.validateLinkTargets(plan, overwrite)
-	if err := s.executeLinkPlan(validatedPlan, dryRun); err != nil {
+	s.validateLinkTargets(plan, overwrite)
+	if err := s.executeLinkPlan(plan, dryRun); err != nil {
 		return err
 	}
 
@@ -150,14 +142,14 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	return nil
 }
 
-// planRepositoryRoot collects links for dotfiles in the repository root.
-func (s *FileLinkerService) planRepositoryRoot(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
+// appendRepositoryRootPlan appends links for dotfiles in the repository root.
+func (s *FileLinkerService) appendRepositoryRootPlan(plan *[]linkPlanEntry, repoRoot string, userHome string, ignoreMatcher *ignoreMatcher) error {
 	children, err := s.fs.ReadDirectory(repoRoot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read repository root: %w", err)
+		return fmt.Errorf("failed to read repository root: %w", err)
 	}
-	entries := make([]linkPlanEntry, 0, len(children))
-	var ignoredFiles []string
+	ignoredCount := 0
+	start := len(*plan)
 	for _, child := range children {
 		if child.IsDirectory || !strings.HasPrefix(filepath.Base(child.Path), ".") {
 			continue
@@ -171,66 +163,45 @@ func (s *FileLinkerService) planRepositoryRoot(repoRoot string, userHome string,
 		isDir := s.fs.DirectoryExists(file)
 
 		if shouldIgnoreFile(relPath, isDir, ignoreMatcher) {
-			ignoredFiles = append(ignoredFiles, file)
+			ignoredCount++
+			s.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", filepath.Base(file))
 		} else {
-			entries = append(entries, linkPlanEntry{
+			*plan = append(*plan, linkPlanEntry{
 				source: file,
 				target: filepath.Join(userHome, filepath.Base(file)),
 			})
 		}
 	}
 
-	// Log ignored files
-	if len(ignoredFiles) > 0 {
-		s.logger.Infof("Ignoring %d files from repository root based on ignore patterns:", len(ignoredFiles))
-		for _, file := range ignoredFiles {
-			s.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", filepath.Base(file))
-		}
+	if ignoredCount > 0 {
+		s.logger.Infof("Ignored %d files from repository root based on ignore patterns", ignoredCount)
 	}
 
-	s.logger.Infof("Found %d files to link from repository root directory to %s", len(entries), userHome)
-	return entries, nil
+	s.logger.Infof("Found %d files to link from repository root directory to %s", len(*plan)-start, userHome)
+	return nil
 }
 
-// planHomeDirectory collects links from the HOME directory.
-func (s *FileLinkerService) planHomeDirectory(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
-	return s.planDirectory(repoRoot, "HOME", userHome, ignoreMatcher)
-}
-
-// planRootDirectory collects links from the ROOT directory (Linux/macOS only).
-func (s *FileLinkerService) planRootDirectory(repoRoot string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
-	// Goの場合、ランタイムでOSを確認するのがより明確
-	if runtime.GOOS == "windows" {
-		s.logger.Info("Skipping ROOT directory processing on non-Unix platforms")
-		return nil, nil
-	}
-	return s.planDirectory(repoRoot, "ROOT", "/", ignoreMatcher)
-}
-
-// planDirectory collects links from a structured source directory.
-func (s *FileLinkerService) planDirectory(repoRoot string, srcDir string, destDir string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, error) {
+// appendDirectoryPlan appends links from a structured source directory.
+func (s *FileLinkerService) appendDirectoryPlan(plan *[]linkPlanEntry, repoRoot string, srcDir string, destDir string, ignoreMatcher *ignoreMatcher) error {
 	srcPath := filepath.Join(repoRoot, srcDir)
 	if !s.fs.DirectoryExists(srcPath) {
 		s.logger.Infof("%s directory not found: %s", srcDir, srcPath)
-		return nil, nil
+		return nil
 	}
 
 	s.logger.Infof("Processing %s directory: %s", srcDir, srcPath)
-	entries, ignoredFiles, err := s.collectLinkPlanEntries(repoRoot, srcPath, destDir, ignoreMatcher)
+	start := len(*plan)
+	ignoredCount, err := s.collectLinkPlanEntries(plan, repoRoot, srcPath, destDir, ignoreMatcher)
 	if err != nil {
-		return nil, fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
+		return fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
 	}
 
-	// Log ignored files
-	if len(ignoredFiles) > 0 {
-		s.logger.Infof("Ignoring %d files from %s directory based on ignore patterns:", len(ignoredFiles), srcDir)
-		for _, file := range ignoredFiles {
-			s.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", file)
-		}
+	if ignoredCount > 0 {
+		s.logger.Infof("Ignored %d files from %s directory based on ignore patterns", ignoredCount, srcDir)
 	}
 
-	s.logger.Infof("Found %d files to link from %s directory to %s", len(entries), srcDir, destDir)
-	return entries, nil
+	s.logger.Infof("Found %d files to link from %s directory to %s", len(*plan)-start, srcDir, destDir)
+	return nil
 }
 
 func validateLinkPlan(repoRoot string, plan []linkPlanEntry) error {
@@ -261,40 +232,30 @@ func validateLinkPlan(repoRoot string, plan []linkPlanEntry) error {
 	return nil
 }
 
-func (s *FileLinkerService) validateLinkTargets(plan []linkPlanEntry, overwrite bool) ([]validatedLinkPlanEntry, error) {
-	validated := make([]validatedLinkPlanEntry, len(plan))
-	var validationErrors []error
-	for i, entry := range plan {
-		operation := validatedLinkPlanEntry{
-			linkPlanEntry:     entry,
-			disposition:       linkDispositionCreate,
-			sourceIsDirectory: s.fs.DirectoryExists(entry.source),
-		}
+func (s *FileLinkerService) validateLinkTargets(plan []linkPlanEntry, overwrite bool) {
+	for i := range plan {
+		operation := &plan[i]
+		operation.disposition = linkDispositionCreate
+		operation.sourceIsDirectory = s.fs.DirectoryExists(operation.source)
 
-		exists, err := s.fs.PathExists(entry.target)
+		exists, err := s.fs.PathExists(operation.target)
 		if err != nil {
-			operation.validationError = fmt.Errorf("failed to inspect target %s: %w", entry.target, err)
+			operation.validationError = fmt.Errorf("failed to inspect target %s: %w", operation.target, err)
 		} else if exists {
-			currentLinkTarget := s.fs.GetLinkTarget(entry.target)
+			currentLinkTarget := s.fs.GetLinkTarget(operation.target)
 			switch {
-			case util.LinkTargetEquals(entry.target, currentLinkTarget, entry.source):
+			case util.LinkTargetEquals(operation.target, currentLinkTarget, operation.source):
 				operation.disposition = linkDispositionSkip
 			case overwrite:
 				operation.disposition = linkDispositionReplace
 			default:
-				operation.validationError = fmt.Errorf("'%s' already exists; use --force to overwrite", entry.target)
+				operation.validationError = fmt.Errorf("'%s' already exists; use --force to overwrite", operation.target)
 			}
 		}
-
-		if operation.validationError != nil {
-			validationErrors = append(validationErrors, operation.validationError)
-		}
-		validated[i] = operation
 	}
-	return validated, errors.Join(validationErrors...)
 }
 
-func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRun bool) error {
+func (s *FileLinkerService) executeLinkPlan(plan []linkPlanEntry, dryRun bool) error {
 	if dryRun {
 		var validationErrors []error
 		for _, entry := range plan {
@@ -358,7 +319,7 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 	return errors.Join(errors.Join(operationErrors...), errors.Join(cleanupErrors...))
 }
 
-func (s *FileLinkerService) logDryRunOperation(entry validatedLinkPlanEntry) {
+func (s *FileLinkerService) logDryRunOperation(entry linkPlanEntry) {
 	s.logger.Verbosef("Linking %s to %s", entry.source, entry.target)
 	if entry.validationError != nil {
 		s.logger.Error(fmt.Sprintf("[DRY-RUN] Cannot link %s to %s: %s", entry.source, entry.target, entry.validationError))
@@ -380,10 +341,9 @@ func (s *FileLinkerService) logDryRunOperation(entry validatedLinkPlanEntry) {
 
 // collectLinkPlanEntries collects linkable files directly into plan entries
 // without descending into ignored directories.
-func (s *FileLinkerService) collectLinkPlanEntries(repoRoot string, sourceRoot string, destinationRoot string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, []string, error) {
+func (s *FileLinkerService) collectLinkPlanEntries(plan *[]linkPlanEntry, repoRoot string, sourceRoot string, destinationRoot string, ignoreMatcher *ignoreMatcher) (int, error) {
 	pendingDirectories := []string{sourceRoot}
-	var entries []linkPlanEntry
-	var ignoredPaths []string
+	ignoredCount := 0
 
 	for len(pendingDirectories) > 0 {
 		last := len(pendingDirectories) - 1
@@ -392,32 +352,34 @@ func (s *FileLinkerService) collectLinkPlanEntries(repoRoot string, sourceRoot s
 
 		children, err := s.fs.ReadDirectory(currentDirectory)
 		if err != nil {
-			return nil, nil, err
+			return 0, err
 		}
 		for _, child := range children {
 			repositoryRelativePath, err := filepath.Rel(repoRoot, child.Path)
 			if err != nil {
-				return nil, nil, err
+				return 0, err
 			}
 
 			if child.IsDirectory {
 				if shouldIgnoreFile(repositoryRelativePath, true, ignoreMatcher) {
-					ignoredPaths = append(ignoredPaths, child.Path)
+					ignoredCount++
+					s.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", child.Path)
 					continue
 				}
 				pendingDirectories = append(pendingDirectories, child.Path)
 				continue
 			}
 			if shouldIgnoreFile(repositoryRelativePath, false, ignoreMatcher) {
-				ignoredPaths = append(ignoredPaths, child.Path)
+				ignoredCount++
+				s.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", child.Path)
 				continue
 			}
 
 			destinationRelativePath, err := filepath.Rel(sourceRoot, child.Path)
 			if err != nil {
-				return nil, nil, err
+				return 0, err
 			}
-			entries = append(entries, linkPlanEntry{
+			*plan = append(*plan, linkPlanEntry{
 				source:       child.Path,
 				target:       filepath.Join(destinationRoot, destinationRelativePath),
 				ensureParent: true,
@@ -425,16 +387,17 @@ func (s *FileLinkerService) collectLinkPlanEntries(repoRoot string, sourceRoot s
 		}
 	}
 
-	return entries, ignoredPaths, nil
+	return ignoredCount, nil
 }
 
 // linkFile creates a symbolic link from the source to the target path.
 func (s *FileLinkerService) linkFile(source string, target string, overwrite bool, dryRun bool) error {
-	validated, _ := s.validateLinkTargets([]linkPlanEntry{{source: source, target: target}}, overwrite)
-	return s.executeLinkPlan(validated, dryRun)
+	plan := []linkPlanEntry{{source: source, target: target}}
+	s.validateLinkTargets(plan, overwrite)
+	return s.executeLinkPlan(plan, dryRun)
 }
 
-func (s *FileLinkerService) applyLink(entry validatedLinkPlanEntry) (*appliedLinkPlanEntry, error) {
+func (s *FileLinkerService) applyLink(entry linkPlanEntry) (*appliedLinkPlanEntry, error) {
 	if entry.disposition == linkDispositionSkip {
 		s.logger.Success(fmt.Sprintf("Skipping already linked: %s -> %s", entry.target, entry.source))
 		return nil, nil
@@ -463,7 +426,7 @@ func (s *FileLinkerService) applyLink(entry validatedLinkPlanEntry) (*appliedLin
 		return nil, fmt.Errorf("failed to create symlink from %s to %s: %w", entry.source, entry.target, linkErr)
 	}
 
-	return &appliedLinkPlanEntry{validatedLinkPlanEntry: entry, backupPath: backupPath}, nil
+	return &appliedLinkPlanEntry{linkPlanEntry: entry, backupPath: backupPath}, nil
 }
 
 func (s *FileLinkerService) moveTargetAside(target string) (string, error) {
