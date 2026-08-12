@@ -642,8 +642,46 @@ func TestLinkFileRemovesBackupAfterSuccessfulReplacement(t *testing.T) {
 	if _, exists := fs.Files[backup]; exists {
 		t.Fatal("temporary backup remains after successful replacement")
 	}
-	if !containsOperation(fs.OperationLog, "Delete: "+backup) {
+	if !containsOperation(fs.OperationLog, "RemoveAll: "+backup) {
 		t.Fatalf("backup was not deleted: %v", fs.OperationLog)
+	}
+}
+
+func TestLinkFileReplacesNonEmptyDirectory(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(source, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fs := infrastructure.NewDefaultFileSystem()
+	probe := filepath.Join(root, "symlink-probe")
+	if err := fs.CreateFileSymlink(probe, source); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	if err := fs.Delete(probe); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(root, "target")
+	nestedFile := filepath.Join(target, "nested", "original.txt")
+	if err := os.MkdirAll(filepath.Dir(nestedFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nestedFile, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewFileLinkerService(fs, NewNullLogger())
+	if err := service.linkFile(source, target, true, false); err != nil {
+		t.Fatalf("linkFile() error = %v", err)
+	}
+	if got := fs.GetLinkTarget(target); got != source {
+		t.Fatalf("link target = %q, want %q", got, source)
+	}
+	backup := target + ".dotfileslinker-backup"
+	if exists, err := fs.PathExists(backup); err != nil || exists {
+		t.Fatalf("replacement backup remains: exists = %v, error = %v", exists, err)
 	}
 }
 
@@ -655,7 +693,7 @@ func TestLinkFileLeavesAppliedLinkAndBackupWhenBackupCleanupFails(t *testing.T) 
 	cleanupError := errors.New("cleanup failed")
 	fs.AddFile(source, "new")
 	fs.AddFile(target, "original")
-	fs.SetErrorForOperation("Delete:"+backup, cleanupError)
+	fs.SetErrorForOperation("RemoveAll:"+backup, cleanupError)
 	service := NewFileLinkerService(fs, NewMockLogger())
 
 	err := service.linkFile(source, target, true, false)

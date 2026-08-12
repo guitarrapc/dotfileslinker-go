@@ -80,6 +80,31 @@ func (m *MockFileSystem) Delete(path string) error {
 	return nil
 }
 
+// RemoveAll removes a path and every mock entry below it.
+func (m *MockFileSystem) RemoveAll(path string) error {
+	m.OperationLog = append(m.OperationLog, "RemoveAll: "+path)
+	if err, exists := m.ErrorResponses["RemoveAll:"+path]; exists {
+		return err
+	}
+
+	for file := range m.Files {
+		if isSameOrDescendant(file, path) {
+			delete(m.Files, file)
+		}
+	}
+	for directory := range m.Directories {
+		if isSameOrDescendant(directory, path) {
+			delete(m.Directories, directory)
+		}
+	}
+	for link := range m.SymLinks {
+		if isSameOrDescendant(link, path) {
+			delete(m.SymLinks, link)
+		}
+	}
+	return nil
+}
+
 // Move renames a file, directory, or symbolic link.
 func (m *MockFileSystem) Move(sourcePath string, destinationPath string) error {
 	operation := "Move: " + sourcePath + " -> " + destinationPath
@@ -240,4 +265,9 @@ func getBoolStr(b bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+func isSameOrDescendant(path, directory string) bool {
+	relative, err := filepath.Rel(directory, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }

@@ -237,6 +237,20 @@ func TestDeleteRemovesEntriesAndPreservesSymlinkTarget(t *testing.T) {
 	}
 }
 
+func TestRemoveAllRemovesNonEmptyDirectory(t *testing.T) {
+	root := t.TempDir()
+	fs := NewDefaultFileSystem()
+	directory := filepath.Join(root, "non-empty")
+	writeTestFile(t, filepath.Join(directory, "nested", "file.txt"), "content")
+
+	if err := fs.RemoveAll(directory); err != nil {
+		t.Fatalf("RemoveAll() error = %v", err)
+	}
+	if _, err := os.Lstat(directory); !os.IsNotExist(err) {
+		t.Fatalf("removed directory still exists or stat failed unexpectedly: %v", err)
+	}
+}
+
 func TestMoveRenamesSymlinkWithoutMovingTarget(t *testing.T) {
 	root := t.TempDir()
 	fs := NewDefaultFileSystem()

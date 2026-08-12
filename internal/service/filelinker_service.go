@@ -335,7 +335,7 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 		if operation.backupPath == "" {
 			continue
 		}
-		if err := s.fs.Delete(operation.backupPath); err != nil {
+		if err := s.fs.RemoveAll(operation.backupPath); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf(
 				"failed to remove replacement backup %s; the link was applied and the backup was left in place: %w",
 				operation.backupPath, err))

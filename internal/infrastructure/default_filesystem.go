@@ -58,6 +58,11 @@ func (dfs *DefaultFileSystem) Delete(path string) error {
 	return os.Remove(path)
 }
 
+// RemoveAll deletes the specified path and all of its children without following symbolic links.
+func (dfs *DefaultFileSystem) RemoveAll(path string) error {
+	return os.RemoveAll(path)
+}
+
 // Move renames a file, directory, or symbolic link without following it.
 func (dfs *DefaultFileSystem) Move(sourcePath string, destinationPath string) error {
 	return os.Rename(sourcePath, destinationPath)

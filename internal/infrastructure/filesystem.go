@@ -19,6 +19,10 @@ type FileSystem interface {
 	// Delete deletes the specified file or empty directory.
 	Delete(path string) error
 
+	// RemoveAll deletes the specified path and all of its children without
+	// following symbolic links.
+	RemoveAll(path string) error
+
 	// Move renames a file, directory, or symbolic link without following it.
 	Move(sourcePath string, destinationPath string) error
 
