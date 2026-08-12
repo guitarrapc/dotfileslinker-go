@@ -310,27 +310,17 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 
 	// Prepare every destination directory before creating the first link. In
 	// particular, this prevents a ROOT permission error from occurring after
-	// HOME links have already been created.
-	var createdDirectories []string
+	// HOME links have already been created. These directories are intentionally
+	// not rolled back: removing paths after other processes may have used them
+	// is less safe than leaving an empty directory behind.
 	for _, entry := range plan {
 		if entry.disposition == linkDispositionSkip || !entry.ensureParent {
 			continue
 		}
 		parent := filepath.Dir(entry.target)
 		s.logger.Verbosef("Ensuring directory exists: %s", parent)
-		missingDirectories, err := s.findMissingDirectories(parent)
-		if err != nil {
-			return errors.Join(
-				fmt.Errorf("failed to inspect parent directories for %s: %w", parent, err),
-				s.rollbackCreatedDirectories(createdDirectories))
-		}
-		// Record every directory that MkdirAll may create before calling it, so
-		// a partially successful MkdirAll can also be rolled back.
-		createdDirectories = append(createdDirectories, missingDirectories...)
 		if err := s.fs.EnsureDirectory(parent); err != nil {
-			return errors.Join(
-				fmt.Errorf("failed to create directory %s: %w", parent, err),
-				s.rollbackCreatedDirectories(createdDirectories))
+			return fmt.Errorf("failed to create directory %s: %w", parent, err)
 		}
 	}
 
@@ -339,16 +329,16 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 		s.logger.Verbosef("Linking %s to %s", entry.source, entry.target)
 		operation, err := s.applyLink(entry)
 		if err != nil {
-			return errors.Join(
-				err,
-				s.rollbackLinkPlan(applied),
-				s.rollbackCreatedDirectories(createdDirectories))
+			return errors.Join(err, s.rollbackLinkPlan(applied))
 		}
 		if operation != nil {
 			applied = append(applied, *operation)
 		}
 	}
 
+	// All links are now committed. Backup cleanup is post-commit work: failures
+	// are reported but never roll back links or parent directories. A later run
+	// will safely skip links that already point to their expected sources.
 	var cleanupErrors []error
 	for _, operation := range applied {
 		if operation.backupPath == "" {
@@ -356,7 +346,7 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 		}
 		if err := s.fs.RemoveAll(operation.backupPath); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf(
-				"failed to remove replacement backup %s; the link was applied and the backup was left in place: %w",
+				"links are committed, but failed to remove replacement backup %s; cleanup may be incomplete: %w",
 				operation.backupPath, err))
 		}
 	}
@@ -365,49 +355,6 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 		s.logger.Success(fmt.Sprintf("Creating symbolic link: %s -> %s", operation.target, operation.source))
 	}
 	return errors.Join(cleanupErrors...)
-}
-
-// findMissingDirectories returns missing ancestors in creation order, from the
-// shallowest directory to path itself.
-func (s *FileLinkerService) findMissingDirectories(path string) ([]string, error) {
-	var missing []string
-	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
-		exists, err := s.fs.PathExists(current)
-		if err != nil {
-			return nil, err
-		}
-		if exists {
-			break
-		}
-		if parent := filepath.Dir(current); parent == current {
-			return nil, fmt.Errorf("filesystem root %s does not exist", current)
-		}
-		missing = append(missing, current)
-	}
-
-	for left, right := 0, len(missing)-1; left < right; left, right = left+1, right-1 {
-		missing[left], missing[right] = missing[right], missing[left]
-	}
-	return missing, nil
-}
-
-func (s *FileLinkerService) rollbackCreatedDirectories(created []string) error {
-	var rollbackErrors []error
-	for i := len(created) - 1; i >= 0; i-- {
-		directory := created[i]
-		exists, err := s.fs.PathExists(directory)
-		if err != nil {
-			rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to inspect created directory %s during rollback: %w", directory, err))
-			continue
-		}
-		if !exists {
-			continue
-		}
-		if err := s.fs.Delete(directory); err != nil {
-			rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to remove created directory %s during rollback: %w", directory, err))
-		}
-	}
-	return errors.Join(rollbackErrors...)
 }
 
 func (s *FileLinkerService) logDryRunOperation(entry validatedLinkPlanEntry) {

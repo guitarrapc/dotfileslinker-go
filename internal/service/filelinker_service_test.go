@@ -486,44 +486,8 @@ func TestExecuteLinkPlanPreparesAllParentsBeforeCreatingLinks(t *testing.T) {
 			t.Fatalf("link was created before every parent was prepared: %v", fs.OperationLog)
 		}
 	}
-	if _, exists := fs.Directories[filepath.Dir(homeTarget)]; exists {
-		t.Fatalf("prepared parent remains after later preparation failed: %v", fs.Directories)
-	}
-}
-
-func TestExecuteLinkPlanRollsBackCreatedParentsWhenLinkFails(t *testing.T) {
-	fs := infrastructure.NewMockFileSystem()
-	source := filepath.Clean("/repo/HOME/.config/app/config")
-	userHome := filepath.Clean("/home/user")
-	target := filepath.Join(userHome, ".config", "app", "config")
-	createdParent := filepath.Dir(target)
-	createdAncestor := filepath.Dir(createdParent)
-	creationError := errors.New("link creation failed")
-	fs.AddFile(source, "content")
-	fs.AddDirectory(userHome)
-	fs.SetErrorForOperation("CreateFileSymlink:"+target, creationError)
-	service := NewFileLinkerService(fs, NewMockLogger())
-	plan := []validatedLinkPlanEntry{{
-		linkPlanEntry: linkPlanEntry{source: source, target: target, ensureParent: true},
-	}}
-
-	err := service.executeLinkPlan(plan, false)
-	if !errors.Is(err, creationError) {
-		t.Fatalf("executeLinkPlan() error = %v, want wrapped %v", err, creationError)
-	}
-	for _, directory := range []string{createdParent, createdAncestor} {
-		if _, exists := fs.Directories[directory]; exists {
-			t.Errorf("created directory remains after rollback: %s", directory)
-		}
-	}
-	if _, exists := fs.Directories[userHome]; !exists {
-		t.Fatalf("pre-existing directory was removed during rollback: %s", userHome)
-	}
-
-	deleteParent := operationIndex(fs.OperationLog, "Delete: "+createdParent)
-	deleteAncestor := operationIndex(fs.OperationLog, "Delete: "+createdAncestor)
-	if deleteParent < 0 || deleteAncestor < 0 || deleteParent > deleteAncestor {
-		t.Fatalf("created directories were not removed deepest first: %v", fs.OperationLog)
+	if homeParent := filepath.Dir(homeTarget); !fs.Directories[homeParent] {
+		t.Fatalf("prepared parent should remain after later preparation failed: %s", homeParent)
 	}
 }
 
@@ -534,15 +498,6 @@ func containsLog(logs []string, substring string) bool {
 		}
 	}
 	return false
-}
-
-func operationIndex(operations []string, want string) int {
-	for index, operation := range operations {
-		if operation == want {
-			return index
-		}
-	}
-	return -1
 }
 
 func assertNoMutationOperations(t *testing.T, operations []string) {
@@ -743,6 +698,9 @@ func TestLinkFileLeavesAppliedLinkAndBackupWhenBackupCleanupFails(t *testing.T) 
 	err := service.linkFile(source, target, true, false)
 	if !errors.Is(err, cleanupError) {
 		t.Fatalf("linkFile() error = %v, want wrapped %v", err, cleanupError)
+	}
+	if !strings.Contains(err.Error(), "links are committed") {
+		t.Fatalf("cleanup error does not describe commit state: %v", err)
 	}
 	if got := fs.GetLinkTarget(target); got != source {
 		t.Fatalf("applied link target = %q, want %q", got, source)

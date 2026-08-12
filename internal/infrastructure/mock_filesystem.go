@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"errors"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -185,6 +186,9 @@ func (m *MockFileSystem) ReadDirectory(root string) ([]DirectoryEntry, error) {
 	for link := range m.SymLinks {
 		appendEntry(link, false)
 	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Path < entries[j].Path
+	})
 	return entries, nil
 }
 
