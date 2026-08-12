@@ -385,7 +385,10 @@ func TestFileLinkerService_LoadIgnorePatterns(t *testing.T) {
 	service := NewFileLinkerService(fs, logger)
 
 	t.Run("Loading ignore list", func(t *testing.T) {
-		patterns := service.loadIgnorePatterns(ignoreFilePath)
+		patterns, err := service.loadIgnorePatterns(ignoreFilePath)
+		if err != nil {
+			t.Fatalf("loadIgnorePatterns() error = %v", err)
+		}
 		expected := []string{".git", ".ignore", "README.md", "", "# comment", ""}
 
 		if len(patterns) != len(expected) {
@@ -406,12 +409,41 @@ func TestFileLinkerService_LoadIgnorePatterns(t *testing.T) {
 
 		// No ignore file setup
 
-		patterns := service.loadIgnorePatterns(ignoreFilePath)
+		patterns, err := service.loadIgnorePatterns(ignoreFilePath)
+		if err != nil {
+			t.Fatalf("loadIgnorePatterns() error = %v", err)
+		}
 
 		if len(patterns) != 0 {
 			t.Errorf("expected no ignore patterns, got: %v", patterns)
 		}
 	})
+}
+
+func TestLinkDotfilesStopsWhenIgnoreFileCannotBeRead(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	repoRoot := filepath.Clean("/repo")
+	userHome := filepath.Clean("/home/user")
+	ignoreFileName := "dotfiles_ignore"
+	ignoreFilePath := filepath.Join(repoRoot, ignoreFileName)
+	readError := errors.New("access denied")
+	fs.AddFile(ignoreFilePath, "*.secret")
+	fs.AddFile(filepath.Join(repoRoot, ".secret"), "sensitive")
+	fs.SetErrorForOperation("ReadAllLines:"+ignoreFilePath, readError)
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false, false)
+	if !errors.Is(err, readError) {
+		t.Fatalf("LinkDotfiles() error = %v, want wrapped %v", err, readError)
+	}
+	if !strings.Contains(err.Error(), ignoreFilePath) {
+		t.Fatalf("LinkDotfiles() error = %q, want ignore path", err)
+	}
+	for _, operation := range fs.OperationLog {
+		if strings.HasPrefix(operation, "EnumerateFiles:") || strings.HasPrefix(operation, "CreateFileSymlink:") {
+			t.Fatalf("processing continued after ignore read error: %v", fs.OperationLog)
+		}
+	}
 }
 
 func TestFileLinkerService_GitIgnoreSemantics(t *testing.T) {

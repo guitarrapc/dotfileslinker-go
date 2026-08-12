@@ -68,7 +68,10 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 
 	// Filter files in the root of the repository
 	ignorePath := filepath.Join(repoRoot, ignoreFileName)
-	userIgnore := s.loadIgnorePatterns(ignorePath)
+	userIgnore, err := s.loadIgnorePatterns(ignorePath)
+	if err != nil {
+		return err
+	}
 	ignoreMatcher := newIgnoreMatcher(userIgnore)
 	s.logger.Verbose(fmt.Sprintf("Loaded %d user-defined ignore patterns from %s", ignoreMatcher.count(), ignorePath))
 	s.logger.Verbose(fmt.Sprintf("Using %d default ignore patterns", len(defaultIgnorePatterns)))
@@ -367,17 +370,21 @@ func shouldIgnoreFile(filePath string, isDir bool, matcher *ignoreMatcher) bool 
 }
 
 // loadIgnorePatterns loads .gitignore-compatible pattern lines in source order.
-func (s *FileLinkerService) loadIgnorePatterns(ignoreFilePath string) []string {
-	if !s.fs.FileExists(ignoreFilePath) {
+// A missing ignore file is optional; all other inspection and read errors are fatal.
+func (s *FileLinkerService) loadIgnorePatterns(ignoreFilePath string) ([]string, error) {
+	exists, err := s.fs.PathExists(ignoreFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect ignore file %s: %w", ignoreFilePath, err)
+	}
+	if !exists {
 		s.logger.Verbose(fmt.Sprintf("Ignore file not found: %s", ignoreFilePath))
-		return nil
+		return nil, nil
 	}
 
 	lines, err := s.fs.ReadAllLines(ignoreFilePath)
 	if err != nil {
-		s.logger.Verbose(fmt.Sprintf("Failed to read ignore file: %s", err))
-		return nil
+		return nil, fmt.Errorf("failed to read ignore file %s: %w", ignoreFilePath, err)
 	}
 
-	return lines
+	return lines, nil
 }
