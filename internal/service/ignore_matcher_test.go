@@ -2,8 +2,6 @@ package service
 
 import (
 	"testing"
-
-	gitignore "github.com/idelchi/go-gitignore"
 )
 
 func TestShouldIgnoreFile(t *testing.T) {
@@ -22,28 +20,75 @@ func TestShouldIgnoreFile(t *testing.T) {
 		{name: "directory contents", patterns: []string{"node_modules/"}, path: "node_modules/pkg/index.js", want: true},
 		{name: "comment", patterns: []string{"# *.log"}, path: "app.log", want: false},
 		{name: "escaped comment", patterns: []string{`\#notes.txt`}, path: "#notes.txt", want: true},
-		{name: "case sensitive", patterns: []string{"file.txt"}, path: "FILE.txt", want: false},
+		{name: "case insensitive", patterns: []string{"file.txt"}, path: "FILE.txt", want: true},
 		{name: "later negation wins", patterns: []string{"*.log", "!important.log"}, path: "important.log", want: false},
 		{name: "later exclusion wins", patterns: []string{"!important.log", "*.log"}, path: "important.log", want: true},
 		{name: "excluded parent cannot be rescued", patterns: []string{"logs/", "!logs/important.log"}, path: "logs/important.log", want: true},
+		{name: "parent can be re-included", patterns: []string{"docs/", "!docs/", "docs/*", "!docs/README.md"}, path: "docs/README.md", want: false},
+		{name: "other child remains ignored", patterns: []string{"docs/", "!docs/", "docs/*", "!docs/README.md"}, path: "docs/other.md", want: true},
+		{name: "leading slash anchors to root", patterns: []string{"/config.json"}, path: "HOME/config.json", want: false},
+		{name: "leading slash root match", patterns: []string{"/config.json"}, path: "config.json", want: true},
+		{name: "trailing double star excludes descendants", patterns: []string{"logs/**"}, path: "logs/archive/app.log", want: true},
+		{name: "trailing double star keeps directory", patterns: []string{"logs/**"}, path: "logs", isDir: true, want: false},
+		{name: "unescaped trailing spaces", patterns: []string{"report.tmp   "}, path: "report.tmp", want: true},
+		{name: "escaped trailing space", patterns: []string{`report.tmp\ `}, path: "report.tmp ", want: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			matcher := gitignore.New(tt.patterns...)
-			if got := shouldIgnoreFile(tt.path, tt.isDir, matcher); got != tt.want {
-				t.Fatalf("shouldIgnoreFile(%q, %v) = %v, want %v", tt.path, tt.isDir, got, tt.want)
+			matcher := newIgnoreMatcher(tt.patterns)
+			if got := matcher.ignored(tt.path, tt.isDir); got != tt.want {
+				t.Fatalf("ignored(%q, %v) = %v, want %v", tt.path, tt.isDir, got, tt.want)
 			}
 		})
 	}
 }
 
 func TestDefaultIgnorePatterns(t *testing.T) {
-	matcher := gitignore.New(defaultIgnorePatterns...)
+	matcher := newIgnoreMatcher(nil)
 
 	for _, path := range []string{".git/config", "nested/.svn/entries", "config.bak", "path/.file.swp"} {
 		if !shouldIgnoreFile(path, false, matcher) {
 			t.Errorf("default patterns should ignore %q", path)
+		}
+	}
+}
+
+func TestDefaultIgnorePatternsCannotBeNegated(t *testing.T) {
+	matcher := newIgnoreMatcher([]string{"!config.bak"})
+	if !shouldIgnoreFile("config.bak", false, matcher) {
+		t.Fatal("built-in ignore pattern was overridden by a user negation")
+	}
+}
+
+func TestIgnoreMatcherDiscardsCommentsAndEmptyLines(t *testing.T) {
+	matcher := newIgnoreMatcher([]string{"", "  ", "# comment", "*.tmp"})
+	if got := matcher.count(); got != 1 {
+		t.Fatalf("count() = %d, want 1", got)
+	}
+}
+
+func TestWildcardMatch(t *testing.T) {
+	tests := []struct {
+		pattern string
+		text    string
+		want    bool
+	}{
+		{pattern: "a*c*g", text: "abcdefg", want: true},
+		{pattern: "start*middle*end.txt", text: "start_wrong_end.txt", want: false},
+		{pattern: "file?.txt", text: "file1.txt", want: true},
+		{pattern: "file?.txt", text: "file12.txt", want: false},
+		{pattern: "file[0-9].txt", text: "file7.txt", want: true},
+		{pattern: "file[!0-9].txt", text: "filex.txt", want: true},
+		{pattern: "file[!0-9].txt", text: "file7.txt", want: false},
+		{pattern: `file\?.txt`, text: "file?.txt", want: true},
+		{pattern: `file\*.txt`, text: "file*.txt", want: true},
+		{pattern: "abc*ef", text: "AbCdEf", want: true},
+	}
+
+	for _, tt := range tests {
+		if got := wildcardMatch(tt.text, tt.pattern); got != tt.want {
+			t.Errorf("wildcardMatch(%q, %q) = %v, want %v", tt.text, tt.pattern, got, tt.want)
 		}
 	}
 }

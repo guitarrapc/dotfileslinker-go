@@ -7,7 +7,6 @@ import (
 
 	"github.com/guitarrapc/dotfileslinker-go/internal/infrastructure"
 	"github.com/guitarrapc/dotfileslinker-go/internal/util"
-	gitignore "github.com/idelchi/go-gitignore"
 )
 
 // FileLinkerService provides functionality to link dotfiles from a repository to user's home directory or system root.
@@ -34,10 +33,12 @@ var defaultIgnorePatterns = []string{
 	"*.tmp",  // Temporary files
 
 	// Version control system folders
-	".git/",
-	".svn/",
-	".hg/",
+	".git",
+	".svn",
+	".hg",
 }
+
+var defaultIgnoreMatcher = newIgnoreMatcher(defaultIgnorePatterns)
 
 // NewFileLinkerService creates a new instance of FileLinkerService.
 func NewFileLinkerService(fs infrastructure.FileSystem, logger Logger) *FileLinkerService {
@@ -67,9 +68,8 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	// Filter files in the root of the repository
 	ignorePath := filepath.Join(repoRoot, ignoreFileName)
 	userIgnore := s.loadIgnorePatterns(ignorePath)
-	ignoreMatcher := gitignore.New(defaultIgnorePatterns...)
-	ignoreMatcher.Append(userIgnore...)
-	s.logger.Verbose(fmt.Sprintf("Loaded %d lines from %s", len(userIgnore), ignorePath))
+	ignoreMatcher := newIgnoreMatcher(userIgnore)
+	s.logger.Verbose(fmt.Sprintf("Loaded %d user-defined ignore patterns from %s", ignoreMatcher.count(), ignorePath))
 	s.logger.Verbose(fmt.Sprintf("Using %d default ignore patterns", len(defaultIgnorePatterns)))
 
 	// Process each directory
@@ -95,7 +95,7 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 }
 
 // processRepositoryRoot processes and links files in the repository root.
-func (s *FileLinkerService) processRepositoryRoot(repoRoot string, userHome string, ignoreMatcher *gitignore.GitIgnore, overwrite bool, dryRun bool) error {
+func (s *FileLinkerService) processRepositoryRoot(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
 	files, err := s.fs.EnumerateFiles(repoRoot, ".*", false)
 	if err != nil {
 		return fmt.Errorf("failed to enumerate files in repository root: %w", err)
@@ -139,12 +139,12 @@ func (s *FileLinkerService) processRepositoryRoot(repoRoot string, userHome stri
 }
 
 // processHomeDirectory processes and links files in the HOME directory.
-func (s *FileLinkerService) processHomeDirectory(repoRoot string, userHome string, ignoreMatcher *gitignore.GitIgnore, overwrite bool, dryRun bool) error {
+func (s *FileLinkerService) processHomeDirectory(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
 	return s.processDirectory(repoRoot, "HOME", userHome, ignoreMatcher, overwrite, dryRun)
 }
 
 // processRootDirectory processes and links files in the ROOT directory (Linux/macOS only).
-func (s *FileLinkerService) processRootDirectory(repoRoot string, ignoreMatcher *gitignore.GitIgnore, overwrite bool, dryRun bool) error {
+func (s *FileLinkerService) processRootDirectory(repoRoot string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
 	// Goの場合、ランタイムでOSを確認するのがより明確
 	if runtime.GOOS == "windows" {
 		s.logger.Info("Skipping ROOT directory processing on non-Unix platforms")
@@ -154,7 +154,7 @@ func (s *FileLinkerService) processRootDirectory(repoRoot string, ignoreMatcher 
 }
 
 // processDirectory processes and links files in the specified directory.
-func (s *FileLinkerService) processDirectory(repoRoot string, srcDir string, destDir string, ignoreMatcher *gitignore.GitIgnore, overwrite bool, dryRun bool) error {
+func (s *FileLinkerService) processDirectory(repoRoot string, srcDir string, destDir string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
 	srcPath := filepath.Join(repoRoot, srcDir)
 	if !s.fs.DirectoryExists(srcPath) {
 		s.logger.Info(fmt.Sprintf("%s directory not found: %s", srcDir, srcPath))
@@ -284,8 +284,9 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 }
 
 // shouldIgnoreFile applies Git-compatible ignore rules to a relative path.
-func shouldIgnoreFile(filePath string, isDir bool, matcher *gitignore.GitIgnore) bool {
-	return matcher.Ignored(filepath.ToSlash(filePath), isDir)
+func shouldIgnoreFile(filePath string, isDir bool, matcher *ignoreMatcher) bool {
+	normalizedPath := filepath.ToSlash(filePath)
+	return defaultIgnoreMatcher.ignored(normalizedPath, isDir) || matcher.ignored(normalizedPath, isDir)
 }
 
 // loadIgnorePatterns loads .gitignore-compatible pattern lines in source order.
