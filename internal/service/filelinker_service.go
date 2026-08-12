@@ -129,7 +129,9 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	if err != nil {
 		return err
 	}
-	plan := append(rootEntries, homeEntries...)
+	plan := make([]linkPlanEntry, 0, len(rootEntries)+len(homeEntries)+len(systemEntries))
+	plan = append(plan, rootEntries...)
+	plan = append(plan, homeEntries...)
 	plan = append(plan, systemEntries...)
 	if err := validateLinkPlan(repoRoot, plan); err != nil {
 		return err
@@ -160,7 +162,7 @@ func (s *FileLinkerService) planRepositoryRoot(repoRoot string, userHome string,
 	if err != nil {
 		return nil, fmt.Errorf("failed to enumerate files in repository root: %w", err)
 	}
-	var validFiles []string
+	entries := make([]linkPlanEntry, 0, len(files))
 	var ignoredFiles []string
 	for _, file := range files {
 		relPath, err := filepath.Rel(repoRoot, file)
@@ -173,7 +175,10 @@ func (s *FileLinkerService) planRepositoryRoot(repoRoot string, userHome string,
 		if shouldIgnoreFile(relPath, isDir, ignoreMatcher) {
 			ignoredFiles = append(ignoredFiles, file)
 		} else {
-			validFiles = append(validFiles, file)
+			entries = append(entries, linkPlanEntry{
+				source: file,
+				target: filepath.Join(userHome, filepath.Base(file)),
+			})
 		}
 	}
 
@@ -185,15 +190,7 @@ func (s *FileLinkerService) planRepositoryRoot(repoRoot string, userHome string,
 		}
 	}
 
-	s.logger.Info(fmt.Sprintf("Found %d files to link from repository root directory to %s", len(validFiles), userHome))
-
-	entries := make([]linkPlanEntry, 0, len(validFiles))
-	for _, source := range validFiles {
-		entries = append(entries, linkPlanEntry{
-			source: source,
-			target: filepath.Join(userHome, filepath.Base(source)),
-		})
-	}
+	s.logger.Info(fmt.Sprintf("Found %d files to link from repository root directory to %s", len(entries), userHome))
 	return entries, nil
 }
 
@@ -221,7 +218,7 @@ func (s *FileLinkerService) planDirectory(repoRoot string, srcDir string, destDi
 	}
 
 	s.logger.Info(fmt.Sprintf("Processing %s directory: %s", srcDir, srcPath))
-	files, ignoredFiles, err := s.collectFiles(repoRoot, srcPath, ignoreMatcher)
+	entries, ignoredFiles, err := s.collectLinkPlanEntries(repoRoot, srcPath, destDir, ignoreMatcher)
 	if err != nil {
 		return nil, fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
 	}
@@ -234,20 +231,7 @@ func (s *FileLinkerService) planDirectory(repoRoot string, srcDir string, destDi
 		}
 	}
 
-	s.logger.Info(fmt.Sprintf("Found %d files to link from %s directory to %s", len(files), srcDir, destDir))
-
-	entries := make([]linkPlanEntry, 0, len(files))
-	for _, file := range files {
-		rel, err := filepath.Rel(srcPath, file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get relative path: %w", err)
-		}
-		entries = append(entries, linkPlanEntry{
-			source:       file,
-			target:       filepath.Join(destDir, rel),
-			ensureParent: true,
-		})
-	}
+	s.logger.Info(fmt.Sprintf("Found %d files to link from %s directory to %s", len(entries), srcDir, destDir))
 	return entries, nil
 }
 
@@ -384,10 +368,11 @@ func (s *FileLinkerService) logDryRunOperation(entry validatedLinkPlanEntry) {
 	}
 }
 
-// collectFiles collects linkable files without descending into ignored directories.
-func (s *FileLinkerService) collectFiles(repoRoot string, sourceRoot string, ignoreMatcher *ignoreMatcher) ([]string, []string, error) {
+// collectLinkPlanEntries collects linkable files directly into plan entries
+// without descending into ignored directories.
+func (s *FileLinkerService) collectLinkPlanEntries(repoRoot string, sourceRoot string, destinationRoot string, ignoreMatcher *ignoreMatcher) ([]linkPlanEntry, []string, error) {
 	pendingDirectories := []string{sourceRoot}
-	var files []string
+	var entries []linkPlanEntry
 	var ignoredPaths []string
 
 	for len(pendingDirectories) > 0 {
@@ -416,19 +401,28 @@ func (s *FileLinkerService) collectFiles(repoRoot string, sourceRoot string, ign
 			return nil, nil, err
 		}
 		for _, file := range currentFiles {
-			relativePath, err := filepath.Rel(repoRoot, file)
+			repositoryRelativePath, err := filepath.Rel(repoRoot, file)
 			if err != nil {
 				return nil, nil, err
 			}
-			if shouldIgnoreFile(relativePath, false, ignoreMatcher) {
+			if shouldIgnoreFile(repositoryRelativePath, false, ignoreMatcher) {
 				ignoredPaths = append(ignoredPaths, file)
-			} else {
-				files = append(files, file)
+				continue
 			}
+
+			destinationRelativePath, err := filepath.Rel(sourceRoot, file)
+			if err != nil {
+				return nil, nil, err
+			}
+			entries = append(entries, linkPlanEntry{
+				source:       file,
+				target:       filepath.Join(destinationRoot, destinationRelativePath),
+				ensureParent: true,
+			})
 		}
 	}
 
-	return files, ignoredPaths, nil
+	return entries, ignoredPaths, nil
 }
 
 // linkFile creates a symbolic link from the source to the target path.
