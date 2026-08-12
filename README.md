@@ -308,10 +308,10 @@ Differences and unsupported behavior:
 ### Automatic Exclusions
 
 The following files and directories are automatically excluded:
-- Version control system folders (`.git`, `.svn`, `.hg`)
+- Version-control metadata directories named `.git`, `.svn`, or `.hg`
 - Non-dotfiles in the root directory
-- OS-specific files like `.DS_Store` (macOS) and `Thumbs.db` (Windows)
-- Temporary files like `*.bak`, `*.tmp`, and vim swap files
+
+Similarly named directories such as `.github` are not automatic exclusions. Add them to `dotfiles_ignore` when they should not be linked.
 
 ## Windows Security Notes
 
