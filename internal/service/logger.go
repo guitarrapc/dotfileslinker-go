@@ -104,7 +104,7 @@ func writeError(output io.Writer, msg string) {
 	if output == nil {
 		output = os.Stderr
 	}
-	fmt.Fprintln(output, "\033[31m[x] "+msg+"\033[0m")
+	_, _ = fmt.Fprintln(output, "\033[31m[x] "+msg+"\033[0m")
 }
 
 // writeInfo writes an informational message.
