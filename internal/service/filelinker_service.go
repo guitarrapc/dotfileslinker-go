@@ -23,6 +23,26 @@ type linkPlanEntry struct {
 	ensureParent bool
 }
 
+type linkDisposition uint8
+
+const (
+	linkDispositionCreate linkDisposition = iota
+	linkDispositionSkip
+	linkDispositionReplace
+)
+
+type validatedLinkPlanEntry struct {
+	linkPlanEntry
+	disposition       linkDisposition
+	sourceIsDirectory bool
+	validationError   error
+}
+
+type appliedLinkPlanEntry struct {
+	validatedLinkPlanEntry
+	backupPath string
+}
+
 // defaultIgnorePatterns contains default patterns to ignore in all directories, common for all platforms
 var defaultIgnorePatterns = []string{
 	// Common OS specific files
@@ -114,8 +134,15 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	if err := validateLinkPlan(repoRoot, plan); err != nil {
 		return err
 	}
-	if err := s.executeLinkPlan(plan, overwrite, dryRun); err != nil {
+	validatedPlan, validationErr := s.validateLinkTargets(plan, overwrite)
+	if validationErr != nil && !dryRun {
+		return validationErr
+	}
+	if err := s.executeLinkPlan(validatedPlan, dryRun); err != nil {
 		return err
+	}
+	if validationErr != nil {
+		return validationErr
 	}
 
 	if dryRun {
@@ -226,7 +253,7 @@ func (s *FileLinkerService) planDirectory(repoRoot string, srcDir string, destDi
 
 func validateLinkPlan(repoRoot string, plan []linkPlanEntry) error {
 	seenTargets := make(map[string]string, len(plan))
-	for _, entry := range plan {
+	for i, entry := range plan {
 		if util.PathEquals(entry.source, entry.target) {
 			return fmt.Errorf("source and destination resolve to the same path: %q", entry.source)
 		}
@@ -241,29 +268,120 @@ func validateLinkPlan(repoRoot string, plan []linkPlanEntry) error {
 		if previousSource, exists := seenTargets[key]; exists {
 			return fmt.Errorf("multiple sources map to destination %q: %q and %q", entry.target, previousSource, entry.source)
 		}
+		for previousIndex := 0; previousIndex < i; previousIndex++ {
+			previousTarget := plan[previousIndex].target
+			if util.PathsOverlap(previousTarget, entry.target) {
+				return fmt.Errorf("destinations %q and %q overlap", previousTarget, entry.target)
+			}
+		}
 		seenTargets[key] = entry.source
 	}
 	return nil
 }
 
-func (s *FileLinkerService) executeLinkPlan(plan []linkPlanEntry, overwrite bool, dryRun bool) error {
-	for _, entry := range plan {
-		if entry.ensureParent {
-			parent := filepath.Dir(entry.target)
-			s.logger.Verbose(fmt.Sprintf("Ensuring directory exists: %s", parent))
-			if !dryRun {
-				if err := s.fs.EnsureDirectory(parent); err != nil {
-					return fmt.Errorf("failed to create directory: %w", err)
-				}
+func (s *FileLinkerService) validateLinkTargets(plan []linkPlanEntry, overwrite bool) ([]validatedLinkPlanEntry, error) {
+	validated := make([]validatedLinkPlanEntry, len(plan))
+	var validationErrors []error
+	for i, entry := range plan {
+		operation := validatedLinkPlanEntry{
+			linkPlanEntry:     entry,
+			disposition:       linkDispositionCreate,
+			sourceIsDirectory: s.fs.DirectoryExists(entry.source),
+		}
+
+		exists, err := s.fs.PathExists(entry.target)
+		if err != nil {
+			operation.validationError = fmt.Errorf("failed to inspect target %s: %w", entry.target, err)
+		} else if exists {
+			currentLinkTarget := s.fs.GetLinkTarget(entry.target)
+			switch {
+			case util.LinkTargetEquals(entry.target, currentLinkTarget, entry.source):
+				operation.disposition = linkDispositionSkip
+			case overwrite:
+				operation.disposition = linkDispositionReplace
+			default:
+				operation.validationError = fmt.Errorf("'%s' already exists; use --force to overwrite", entry.target)
 			}
 		}
 
-		s.logger.Verbose(fmt.Sprintf("Linking %s to %s", entry.source, entry.target))
-		if err := s.linkFile(entry.source, entry.target, overwrite, dryRun); err != nil {
-			return err
+		if operation.validationError != nil {
+			validationErrors = append(validationErrors, operation.validationError)
+		}
+		validated[i] = operation
+	}
+	return validated, errors.Join(validationErrors...)
+}
+
+func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRun bool) error {
+	if dryRun {
+		for _, entry := range plan {
+			s.logDryRunOperation(entry)
+		}
+		return nil
+	}
+
+	// Prepare every destination directory before creating the first link. In
+	// particular, this prevents a ROOT permission error from occurring after
+	// HOME links have already been created.
+	for _, entry := range plan {
+		if entry.disposition == linkDispositionSkip || !entry.ensureParent {
+			continue
+		}
+		parent := filepath.Dir(entry.target)
+		s.logger.Verbose(fmt.Sprintf("Ensuring directory exists: %s", parent))
+		if err := s.fs.EnsureDirectory(parent); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", parent, err)
 		}
 	}
-	return nil
+
+	applied := make([]appliedLinkPlanEntry, 0, len(plan))
+	for _, entry := range plan {
+		s.logger.Verbose(fmt.Sprintf("Linking %s to %s", entry.source, entry.target))
+		operation, err := s.applyLink(entry)
+		if err != nil {
+			return errors.Join(err, s.rollbackLinkPlan(applied))
+		}
+		if operation != nil {
+			applied = append(applied, *operation)
+		}
+	}
+
+	var cleanupErrors []error
+	for _, operation := range applied {
+		if operation.backupPath == "" {
+			continue
+		}
+		if err := s.fs.Delete(operation.backupPath); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf(
+				"failed to remove replacement backup %s; the link was applied and the backup was left in place: %w",
+				operation.backupPath, err))
+		}
+	}
+
+	for _, operation := range applied {
+		s.logger.Success(fmt.Sprintf("Creating symbolic link: %s -> %s", operation.target, operation.source))
+	}
+	return errors.Join(cleanupErrors...)
+}
+
+func (s *FileLinkerService) logDryRunOperation(entry validatedLinkPlanEntry) {
+	s.logger.Verbose(fmt.Sprintf("Linking %s to %s", entry.source, entry.target))
+	if entry.validationError != nil {
+		s.logger.Error(fmt.Sprintf("[DRY-RUN] Cannot link %s to %s: %s", entry.source, entry.target, entry.validationError))
+		return
+	}
+	if entry.disposition == linkDispositionSkip {
+		s.logger.Success(fmt.Sprintf("[DRY-RUN] Would skip already linked: %s -> %s", entry.target, entry.source))
+		return
+	}
+	if entry.disposition == linkDispositionReplace {
+		s.logger.Verbose(fmt.Sprintf("[DRY-RUN] Would replace existing target: %s", entry.target))
+	}
+	if entry.sourceIsDirectory {
+		s.logger.Success(fmt.Sprintf("[DRY-RUN] Would create directory symlink: %s -> %s", entry.target, entry.source))
+	} else {
+		s.logger.Success(fmt.Sprintf("[DRY-RUN] Would create file symlink: %s -> %s", entry.target, entry.source))
+	}
 }
 
 // collectFiles collects linkable files without descending into ignored directories.
@@ -315,73 +433,70 @@ func (s *FileLinkerService) collectFiles(repoRoot string, sourceRoot string, ign
 
 // linkFile creates a symbolic link from the source to the target path.
 func (s *FileLinkerService) linkFile(source string, target string, overwrite bool, dryRun bool) error {
-	exists, err := s.fs.PathExists(target)
-	if err != nil {
-		return fmt.Errorf("failed to inspect target: %w", err)
+	validated, validationErr := s.validateLinkTargets([]linkPlanEntry{{source: source, target: target}}, overwrite)
+	if validationErr != nil {
+		if dryRun {
+			s.logDryRunOperation(validated[0])
+		}
+		return validationErr
+	}
+	return s.executeLinkPlan(validated, dryRun)
+}
+
+func (s *FileLinkerService) applyLink(entry validatedLinkPlanEntry) (*appliedLinkPlanEntry, error) {
+	if entry.disposition == linkDispositionSkip {
+		s.logger.Success(fmt.Sprintf("Skipping already linked: %s -> %s", entry.target, entry.source))
+		return nil, nil
 	}
 
 	backupPath := ""
-	if exists {
-		currentLinkTarget := s.fs.GetLinkTarget(target)
-
-		// If the target is a symlink and points to the same file, do nothing
-		if util.LinkTargetEquals(target, currentLinkTarget, source) {
-			if dryRun {
-				s.logger.Success(fmt.Sprintf("[DRY-RUN] Would skip already linked: %s -> %s", target, source))
-			} else {
-				s.logger.Success(fmt.Sprintf("Skipping already linked: %s -> %s", target, source))
-			}
-			return nil
-		}
-
-		if !overwrite {
-			s.logger.Verbose(fmt.Sprintf("Target %s exists and overwrite=false, aborting", target))
-			return fmt.Errorf("'%s' already exists; use --force to overwrite", target)
-		}
-
-		if dryRun {
-			s.logger.Verbose(fmt.Sprintf("[DRY-RUN] Would replace existing target: %s", target))
-		} else {
-			backupPath, err = s.moveTargetAside(target)
-			if err != nil {
-				return err
-			}
+	if entry.disposition == linkDispositionReplace {
+		var err error
+		backupPath, err = s.moveTargetAside(entry.target)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	// Create the link (or just log what would happen in dry-run mode)
 	var linkErr error
-	if s.fs.DirectoryExists(source) {
-		if dryRun {
-			s.logger.Success(fmt.Sprintf("[DRY-RUN] Would create directory symlink: %s -> %s", target, source))
-			return nil
-		}
-		linkErr = s.fs.CreateDirectorySymlink(target, source)
+	if entry.sourceIsDirectory {
+		linkErr = s.fs.CreateDirectorySymlink(entry.target, entry.source)
 	} else {
-		if dryRun {
-			s.logger.Success(fmt.Sprintf("[DRY-RUN] Would create file symlink: %s -> %s", target, source))
-			return nil
-		}
-		linkErr = s.fs.CreateFileSymlink(target, source)
+		linkErr = s.fs.CreateFileSymlink(entry.target, entry.source)
 	}
-
 	if linkErr != nil {
 		if backupPath != "" {
-			linkErr = errors.Join(linkErr, s.restoreMovedTarget(target, backupPath))
+			linkErr = errors.Join(linkErr, s.restoreMovedTarget(entry.target, backupPath))
 		}
-		s.logger.Error(fmt.Sprintf("Failed to create symlink from %s to %s: %s", source, target, linkErr))
-		return fmt.Errorf("failed to create symlink from %s to %s: %w", source, target, linkErr)
+		s.logger.Error(fmt.Sprintf("Failed to create symlink from %s to %s: %s", entry.source, entry.target, linkErr))
+		return nil, fmt.Errorf("failed to create symlink from %s to %s: %w", entry.source, entry.target, linkErr)
 	}
 
-	if backupPath != "" {
-		if err := s.fs.Delete(backupPath); err != nil {
-			rollbackErr := s.restoreMovedTarget(target, backupPath)
-			return fmt.Errorf("failed to remove backup after replacing %s: %w", target, errors.Join(err, rollbackErr))
+	return &appliedLinkPlanEntry{validatedLinkPlanEntry: entry, backupPath: backupPath}, nil
+}
+
+func (s *FileLinkerService) rollbackLinkPlan(applied []appliedLinkPlanEntry) error {
+	var rollbackErrors []error
+	for i := len(applied) - 1; i >= 0; i-- {
+		operation := applied[i]
+		exists, err := s.fs.PathExists(operation.target)
+		if err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to inspect destination %s during rollback: %w", operation.target, err))
+			continue
+		}
+		if exists {
+			if err := s.fs.Delete(operation.target); err != nil {
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to remove destination %s during rollback: %w", operation.target, err))
+				continue
+			}
+		}
+		if operation.backupPath != "" {
+			if err := s.fs.Move(operation.backupPath, operation.target); err != nil {
+				rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to restore destination %s during rollback: %w", operation.target, err))
+			}
 		}
 	}
-
-	s.logger.Success(fmt.Sprintf("Creating symbolic link: %s -> %s", target, source))
-	return nil
+	return errors.Join(rollbackErrors...)
 }
 
 func (s *FileLinkerService) moveTargetAside(target string) (string, error) {

@@ -344,6 +344,154 @@ func TestLinkDotfilesRejectsDuplicateDestinationBeforeMutation(t *testing.T) {
 	assertNoMutationOperations(t, fs.OperationLog)
 }
 
+func TestLinkDotfilesValidatesAllExistingTargetsBeforeApplyingPlan(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "preflight-conflict")
+	repoRoot := filepath.Join(root, "repo")
+	userHome := filepath.Join(root, "home")
+	firstSource := filepath.Join(repoRoot, ".first")
+	secondSource := filepath.Join(repoRoot, ".second")
+	secondTarget := filepath.Join(userHome, ".second")
+	fs.AddFile(firstSource, "first")
+	fs.AddFile(secondSource, "second")
+	fs.AddFile(secondTarget, "existing")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{firstSource, secondSource})
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", false, false)
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("LinkDotfiles() error = %v, want existing-target conflict", err)
+	}
+	assertNoMutationOperations(t, fs.OperationLog)
+}
+
+func TestLinkDotfilesDryRunReportsRemainingEntriesAfterConflict(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	logger := NewMockLogger()
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "dry-run-conflict")
+	repoRoot := filepath.Join(root, "repo")
+	userHome := filepath.Join(root, "home")
+	conflictingSource := filepath.Join(repoRoot, ".conflict")
+	remainingSource := filepath.Join(repoRoot, ".remaining")
+	conflictingTarget := filepath.Join(userHome, ".conflict")
+	remainingTarget := filepath.Join(userHome, ".remaining")
+	fs.AddFile(conflictingSource, "conflict")
+	fs.AddFile(remainingSource, "remaining")
+	fs.AddFile(conflictingTarget, "existing")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{conflictingSource, remainingSource})
+	service := NewFileLinkerService(fs, logger)
+
+	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", false, true)
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("LinkDotfiles() error = %v, want existing-target conflict", err)
+	}
+	if !containsLog(logger.ErrorLogs, conflictingTarget) {
+		t.Fatalf("dry-run did not report conflict for %s: %v", conflictingTarget, logger.ErrorLogs)
+	}
+	if !containsLog(logger.SuccessLogs, remainingTarget) {
+		t.Fatalf("dry-run stopped before reporting %s: %v", remainingTarget, logger.SuccessLogs)
+	}
+	assertNoMutationOperations(t, fs.OperationLog)
+}
+
+func TestLinkDotfilesRollsBackEarlierLinksWhenLaterCreationFails(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "apply-rollback")
+	repoRoot := filepath.Join(root, "repo")
+	userHome := filepath.Join(root, "home")
+	firstSource := filepath.Join(repoRoot, ".first")
+	secondSource := filepath.Join(repoRoot, ".second")
+	firstTarget := filepath.Join(userHome, ".first")
+	secondTarget := filepath.Join(userHome, ".second")
+	creationError := errors.New("creation failed")
+	fs.AddFile(firstSource, "first")
+	fs.AddFile(secondSource, "second")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{firstSource, secondSource})
+	fs.SetErrorForOperation("CreateFileSymlink:"+secondTarget, creationError)
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", false, false)
+	if !errors.Is(err, creationError) {
+		t.Fatalf("LinkDotfiles() error = %v, want wrapped %v", err, creationError)
+	}
+	if _, exists := fs.SymLinks[firstTarget]; exists {
+		t.Fatalf("earlier link remains after rollback: %s", firstTarget)
+	}
+	if !containsOperation(fs.OperationLog, "Delete: "+firstTarget) {
+		t.Fatalf("earlier link was not rolled back: %v", fs.OperationLog)
+	}
+}
+
+func TestLinkDotfilesRestoresEarlierReplacementWhenLaterCreationFails(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	root := filepath.Join(os.TempDir(), "dotfileslinker", "replacement-rollback")
+	repoRoot := filepath.Join(root, "repo")
+	userHome := filepath.Join(root, "home")
+	firstSource := filepath.Join(repoRoot, ".first")
+	secondSource := filepath.Join(repoRoot, ".second")
+	firstTarget := filepath.Join(userHome, ".first")
+	secondTarget := filepath.Join(userHome, ".second")
+	firstBackup := firstTarget + ".dotfileslinker-backup"
+	creationError := errors.New("creation failed")
+	fs.AddFile(firstSource, "new first")
+	fs.AddFile(secondSource, "second")
+	fs.AddFile(firstTarget, "original first")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{firstSource, secondSource})
+	fs.SetErrorForOperation("CreateFileSymlink:"+secondTarget, creationError)
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.LinkDotfiles(repoRoot, userHome, "dotfiles_ignore", true, false)
+	if !errors.Is(err, creationError) {
+		t.Fatalf("LinkDotfiles() error = %v, want wrapped %v", err, creationError)
+	}
+	if got := fs.Files[firstTarget]; got != "original first" {
+		t.Fatalf("earlier replacement was not restored: got %q", got)
+	}
+	if _, exists := fs.SymLinks[firstTarget]; exists {
+		t.Fatalf("replacement link remains after rollback: %s", firstTarget)
+	}
+	if _, exists := fs.Files[firstBackup]; exists {
+		t.Fatalf("backup remains after successful rollback: %s", firstBackup)
+	}
+}
+
+func TestExecuteLinkPlanPreparesAllParentsBeforeCreatingLinks(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	homeSource := filepath.Clean("/repo/HOME/.config/app/config")
+	rootSource := filepath.Clean("/repo/ROOT/etc/app/config")
+	homeTarget := filepath.Clean("/home/user/.config/app/config")
+	rootTarget := filepath.Clean("/etc/app/config")
+	rootParent := filepath.Dir(rootTarget)
+	permissionError := errors.New("permission denied")
+	fs.AddFile(homeSource, "home")
+	fs.AddFile(rootSource, "root")
+	fs.SetErrorForOperation("EnsureDirectory:"+rootParent, permissionError)
+	service := NewFileLinkerService(fs, NewMockLogger())
+	plan := []validatedLinkPlanEntry{
+		{linkPlanEntry: linkPlanEntry{source: homeSource, target: homeTarget, ensureParent: true}},
+		{linkPlanEntry: linkPlanEntry{source: rootSource, target: rootTarget, ensureParent: true}},
+	}
+
+	err := service.executeLinkPlan(plan, false)
+	if !errors.Is(err, permissionError) {
+		t.Fatalf("executeLinkPlan() error = %v, want wrapped %v", err, permissionError)
+	}
+	for _, operation := range fs.OperationLog {
+		if strings.HasPrefix(operation, "CreateFileSymlink:") || strings.HasPrefix(operation, "CreateDirectorySymlink:") {
+			t.Fatalf("link was created before every parent was prepared: %v", fs.OperationLog)
+		}
+	}
+}
+
+func containsLog(logs []string, substring string) bool {
+	for _, log := range logs {
+		if strings.Contains(log, substring) {
+			return true
+		}
+	}
+	return false
+}
+
 func assertNoMutationOperations(t *testing.T, operations []string) {
 	t.Helper()
 	for _, operation := range operations {
@@ -487,6 +635,29 @@ func TestLinkFileRemovesBackupAfterSuccessfulReplacement(t *testing.T) {
 	}
 	if !containsOperation(fs.OperationLog, "Delete: "+backup) {
 		t.Fatalf("backup was not deleted: %v", fs.OperationLog)
+	}
+}
+
+func TestLinkFileLeavesAppliedLinkAndBackupWhenBackupCleanupFails(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	source := filepath.Clean("/repo/.bashrc")
+	target := filepath.Clean("/home/user/.bashrc")
+	backup := target + ".dotfileslinker-backup"
+	cleanupError := errors.New("cleanup failed")
+	fs.AddFile(source, "new")
+	fs.AddFile(target, "original")
+	fs.SetErrorForOperation("Delete:"+backup, cleanupError)
+	service := NewFileLinkerService(fs, NewMockLogger())
+
+	err := service.linkFile(source, target, true, false)
+	if !errors.Is(err, cleanupError) {
+		t.Fatalf("linkFile() error = %v, want wrapped %v", err, cleanupError)
+	}
+	if got := fs.GetLinkTarget(target); got != source {
+		t.Fatalf("applied link target = %q, want %q", got, source)
+	}
+	if got := fs.Files[backup]; got != "original" {
+		t.Fatalf("preserved backup = %q, want original content", got)
 	}
 }
 
