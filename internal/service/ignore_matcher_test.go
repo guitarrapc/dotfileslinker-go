@@ -53,6 +53,15 @@ func TestDefaultIgnorePatterns(t *testing.T) {
 			t.Errorf("default patterns should ignore %q", path)
 		}
 	}
+
+	for _, path := range []string{".git", ".svn", ".hg"} {
+		if shouldIgnoreFile(path, false, matcher) {
+			t.Errorf("default VCS directory pattern should not ignore same-named file %q", path)
+		}
+		if !shouldIgnoreFile(path, true, matcher) {
+			t.Errorf("default VCS directory pattern should ignore directory %q", path)
+		}
+	}
 }
 
 func TestDefaultIgnorePatternsCannotBeNegated(t *testing.T) {

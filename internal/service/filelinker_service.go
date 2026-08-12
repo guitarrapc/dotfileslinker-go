@@ -34,9 +34,9 @@ var defaultIgnorePatterns = []string{
 	"*.tmp",  // Temporary files
 
 	// Version control system folders
-	".git",
-	".svn",
-	".hg",
+	".git/",
+	".svn/",
+	".hg/",
 }
 
 var defaultIgnoreMatcher = newIgnoreMatcher(defaultIgnorePatterns)
