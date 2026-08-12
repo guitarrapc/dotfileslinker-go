@@ -22,7 +22,7 @@ func main() {
 	// parse args
 	showHelp := containsFlag(args, "--help", "-h")
 	showVersion := containsFlag(args, "--version")
-	forceOverwrite := containsFlag(args, "--force=y")
+	forceOverwrite := containsFlag(args, "--force")
 	verbose := containsFlag(args, "--verbose", "-v")
 	dryRun := containsFlag(args, "--dry-run", "-d")
 
@@ -133,7 +133,7 @@ Usage: %s [options]
 
 Options:
   --help, -h         Display this help message
-  --force=y          Overwrite existing files or directories
+  --force            Overwrite existing files or directories
   --verbose, -v      Display detailed information during execution
   --version          Display version information
   --dry-run, -d      Simulate the operations without making any changes
@@ -158,7 +158,7 @@ Environment Variables:
 
 Examples:
   %s              # Link dotfiles using default settings
-  %s --force=y    # Overwrite any existing files
+  %s --force      # Overwrite any existing files
   %s --verbose    # Show detailed information
   %s --dry-run    # Simulate the operations
 `, appName, appName, appName, appName, appName)

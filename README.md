@@ -30,8 +30,8 @@ Fast Go utility to create symbolic links from dotfiles to your home directory. T
 # Safe mode, do not overwrite existing files
 $ dotfileslinker
 
-# use --force=y to overwrite destination files
-$ dotfileslinker --force=y
+# use --force to overwrite destination files
+$ dotfileslinker --force
 ```
 
 ## How It Works
@@ -136,10 +136,10 @@ dotfiles
 
 </details>
 
-2. Run the dotfileslinker command. The `--force=y` option is required to overwrite existing files.
+2. Run the dotfileslinker command. The `--force` option is required to overwrite existing files.
 
 ```sh
-$ dotfileslinker --force=y
+$ dotfileslinker --force
 [o] Skipping already linked: /home/user/.bashrc_custom -> /home/user/dotfiles/.bashrc_custom
 [o] Skipping already linked: /home/user/.gitconfig -> /home/user/dotfiles/.gitconfig
 [o] Creating symbolic link: /home/user/.gitignore_global -> /home/user/dotfiles/.gitignore_global
@@ -178,7 +178,7 @@ All options are optional. The default behavior is to create symbolic links for a
 | --- | --- |
 | `--help`, `-h` | Display help information |
 | `--version` | Display version information |
-| `--force=y` | Overwrite existing files or directories |
+| `--force` | Overwrite existing files or directories |
 | `--verbose`, `-v` | Display detailed information during execution |
 | `--dry-run`, `-d` | Simulate operations without making any changes |
 
@@ -202,7 +202,7 @@ export DOTFILES_ROOT=/path/to/my/dotfiles
 export DOTFILES_HOME=/custom/home/path
 
 # Run with custom settings
-dotfileslinker --force=y
+dotfileslinker --force
 ```
 
 ### dotfiles_ignore File

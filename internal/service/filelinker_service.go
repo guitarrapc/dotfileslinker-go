@@ -242,7 +242,7 @@ func (s *FileLinkerService) linkFile(source string, target string, overwrite boo
 
 		if !overwrite {
 			s.logger.Verbose(fmt.Sprintf("Target %s exists and overwrite=false, aborting", target))
-			return fmt.Errorf("'%s' already exists; use --force=y to overwrite", target)
+			return fmt.Errorf("'%s' already exists; use --force to overwrite", target)
 		}
 
 		if dryRun {

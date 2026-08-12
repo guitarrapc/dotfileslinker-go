@@ -30,8 +30,8 @@ Go言語で実装された高速な dotfiles シンボリックリンク作成�
 # 安全モード、既存ファイルを上書きしません
 $ dotfileslinker
 
-# --force=y オプションで既存ファイルを上書き
-$ dotfileslinker --force=y
+# --force オプションで既存ファイルを上書き
+$ dotfileslinker --force
 ```
 
 ## 動作原理
@@ -136,10 +136,10 @@ dotfiles
 
 </details>
 
-2. dotfileslinkerコマンドを実行します。既存のファイルを上書きするには `--force=y` オプションが必要です。
+2. dotfileslinkerコマンドを実行します。既存のファイルを上書きするには `--force` オプションが必要です。
 
 ```sh
-$ dotfileslinker --force=y
+$ dotfileslinker --force
 [o] Skipping already linked: /home/user/.bashrc_custom -> /home/user/dotfiles/.bashrc_custom
 [o] Skipping already linked: /home/user/.gitconfig -> /home/user/dotfiles/.gitconfig
 [o] Creating symbolic link: /home/user/.gitignore_global -> /home/user/dotfiles/.gitignore_global
@@ -178,7 +178,7 @@ dotfileslinker --help
 | --- | --- |
 | `--help`, `-h` | ヘルプ情報を表示 |
 | `--version` | バージョン情報を表示 |
-| `--force=y` | 既存のファイルやディレクトリを上書き |
+| `--force` | 既存のファイルやディレクトリを上書き |
 | `--verbose`, `-v` | 実行中の詳細情報を表示 |
 | `--dry-run`, `-d` | 実際に変更を加えずに操作をシミュレーション |
 
@@ -202,7 +202,7 @@ export DOTFILES_ROOT=/path/to/my/dotfiles
 export DOTFILES_HOME=/custom/home/path
 
 # カスタム設定で実行
-dotfileslinker --force=y
+dotfileslinker --force
 ```
 
 ### dotfiles_ignore ファイル
