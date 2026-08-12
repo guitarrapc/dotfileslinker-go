@@ -212,7 +212,12 @@ func (m *MockFileSystem) EnsureDirectory(path string) error {
 		return err
 	}
 
-	m.Directories[path] = true
+	for directory := filepath.Clean(path); ; directory = filepath.Dir(directory) {
+		m.Directories[directory] = true
+		if parent := filepath.Dir(directory); parent == directory {
+			break
+		}
+	}
 	return nil
 }
 
@@ -245,7 +250,12 @@ func (m *MockFileSystem) AddFile(path string, content string) {
 
 // AddDirectory adds a directory to the mock filesystem
 func (m *MockFileSystem) AddDirectory(path string) {
-	m.Directories[path] = true
+	for directory := filepath.Clean(path); ; directory = filepath.Dir(directory) {
+		m.Directories[directory] = true
+		if parent := filepath.Dir(directory); parent == directory {
+			break
+		}
+	}
 }
 
 // SetupFileEnumeration configures file enumeration results
