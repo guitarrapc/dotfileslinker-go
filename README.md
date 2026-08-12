@@ -30,6 +30,9 @@ Fast Go utility to create symbolic links from dotfiles to your home directory. T
 # Safe mode, do not overwrite existing files
 $ dotfileslinker
 
+# Link a cloned repository without changing the current directory
+$ dotfileslinker --root /path/to/dotfiles
+
 # use --force to overwrite destination files
 $ dotfileslinker --force
 ```
@@ -178,6 +181,7 @@ All options are optional. The default behavior is to create symbolic links for a
 | --- | --- |
 | `--help`, `-h` | Display help information |
 | `--version` | Display version information |
+| `--root PATH` | Directory containing dotfiles; takes precedence over `DOTFILES_ROOT` |
 | `--force` | Overwrite existing files or directories |
 | `--verbose`, `-v` | Display detailed information during execution |
 | `--dry-run`, `-d` | Simulate operations without making any changes |
@@ -188,14 +192,17 @@ dotfiles can be configured using the following environment variables:
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `DOTFILES_ROOT` | Root directory of your dotfiles repository | Current directory |
+| `DOTFILES_ROOT` | Root directory used when `--root` is omitted | Current directory |
 | `DOTFILES_HOME` | User's home directory | User profile directory (`$HOME`) |
 | `DOTFILES_IGNORE_FILE` | Name of the ignore file | `dotfiles_ignore` |
 
 Example usage with environment variables:
 
 ```sh
-# Set custom dotfiles repository path
+# Specify a cloned dotfiles repository directly
+dotfileslinker --root /path/to/my/dotfiles
+
+# Alternatively, set a default dotfiles repository path
 export DOTFILES_ROOT=/path/to/my/dotfiles
 
 # Set custom home directory

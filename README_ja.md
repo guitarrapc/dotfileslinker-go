@@ -30,6 +30,9 @@ Go言語で実装された高速な dotfiles シンボリックリンク作成�
 # 安全モード、既存ファイルを上書きしません
 $ dotfileslinker
 
+# カレントディレクトリを移動せず、clone済みリポジトリを指定
+$ dotfileslinker --root /path/to/dotfiles
+
 # --force オプションで既存ファイルを上書き
 $ dotfileslinker --force
 ```
@@ -178,6 +181,7 @@ dotfileslinker --help
 | --- | --- |
 | `--help`, `-h` | ヘルプ情報を表示 |
 | `--version` | バージョン情報を表示 |
+| `--root PATH` | dotfilesリポジトリのディレクトリ。`DOTFILES_ROOT`より優先 |
 | `--force` | 既存のファイルやディレクトリを上書き |
 | `--verbose`, `-v` | 実行中の詳細情報を表示 |
 | `--dry-run`, `-d` | 実際に変更を加えずに操作をシミュレーション |
@@ -188,14 +192,17 @@ dotfileslinkerは以下の環境変数で設定をカスタマイズできます
 
 | 変数 | 説明 | デフォルト値 |
 | --- | --- | --- |
-| `DOTFILES_ROOT` | dotfilesリポジトリのルートディレクトリ | カレントディレクトリ |
+| `DOTFILES_ROOT` | `--root`省略時に使うdotfilesリポジトリのルートディレクトリ | カレントディレクトリ |
 | `DOTFILES_HOME` | ユーザーのホームディレクトリ | ユーザープロファイルディレクトリ（`$HOME`） |
 | `DOTFILES_IGNORE_FILE` | 除外ファイルの名前 | `dotfiles_ignore` |
 
 環境変数を使用する例：
 
 ```sh
-# カスタムdotfilesリポジトリのパスを設定
+# clone済みdotfilesリポジトリを直接指定
+dotfileslinker --root /path/to/my/dotfiles
+
+# または既定のdotfilesリポジトリを環境変数で設定
 export DOTFILES_ROOT=/path/to/my/dotfiles
 
 # カスタムホームディレクトリを設定
