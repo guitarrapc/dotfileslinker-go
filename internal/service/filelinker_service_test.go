@@ -225,7 +225,7 @@ func TestFileLinkerService_LinkDotfiles(t *testing.T) {
 	})
 }
 
-func TestFileLinkerService_LoadIgnoreList(t *testing.T) {
+func TestFileLinkerService_LoadIgnorePatterns(t *testing.T) {
 	// Setup test environment
 	fs := infrastructure.NewMockFileSystem()
 	logger := NewMockLogger()
@@ -242,24 +242,16 @@ func TestFileLinkerService_LoadIgnoreList(t *testing.T) {
 	service := NewFileLinkerService(fs, logger)
 
 	t.Run("Loading ignore list", func(t *testing.T) {
-		ignoreList := service.loadIgnoreList(ignoreFilePath)
+		patterns := service.loadIgnorePatterns(ignoreFilePath)
+		expected := []string{".git", ".ignore", "README.md", "", "# comment", ""}
 
-		// Check that expected items are included
-		expectedItems := []string{".git", ".ignore", "README.md", "# comment"}
-		for _, item := range expectedItems {
-			if !ignoreList[item] {
-				t.Errorf("Ignore list missing '%s'", item)
+		if len(patterns) != len(expected) {
+			t.Fatalf("pattern count mismatch: got %d, want %d", len(patterns), len(expected))
+		}
+		for i := range expected {
+			if patterns[i] != expected[i] {
+				t.Errorf("pattern %d = %q, want %q", i, patterns[i], expected[i])
 			}
-		}
-
-		// Check that empty lines are NOT included
-		if ignoreList[""] {
-			t.Error("Ignore list contains empty line")
-		}
-
-		// Count should match expected items (including comment line)
-		if len(ignoreList) != len(expectedItems) {
-			t.Errorf("Ignore list count mismatch: expected %d, got %d", len(expectedItems), len(ignoreList))
 		}
 	})
 
@@ -271,13 +263,55 @@ func TestFileLinkerService_LoadIgnoreList(t *testing.T) {
 
 		// No ignore file setup
 
-		ignoreList := service.loadIgnoreList(ignoreFilePath)
+		patterns := service.loadIgnorePatterns(ignoreFilePath)
 
-		// Should return empty map
-		if len(ignoreList) != 0 {
-			t.Errorf("Expected empty ignore list but got: %v", ignoreList)
+		if len(patterns) != 0 {
+			t.Errorf("expected no ignore patterns, got: %v", patterns)
 		}
 	})
+}
+
+func TestFileLinkerService_GitIgnoreSemantics(t *testing.T) {
+	fs := infrastructure.NewMockFileSystem()
+	service := NewFileLinkerService(fs, NewMockLogger())
+	repoRoot := filepath.Clean("/repo")
+	userHome := filepath.Clean("/home/user")
+	ignoreFileName := "dotfiles_ignore"
+	homeRoot := filepath.Join(repoRoot, "HOME")
+
+	ignoredByDirectory := filepath.Join(homeRoot, "cache", "data.json")
+	ignoredByWildcard := filepath.Join(homeRoot, "logs", "app.log")
+	reincludedByLaterRule := filepath.Join(homeRoot, "logs", "important.log")
+
+	fs.AddFile(filepath.Join(repoRoot, ignoreFileName), "# comment\nHOME/cache/\n*.log\n!important.log\n")
+	fs.AddDirectory(homeRoot)
+	fs.AddFile(ignoredByDirectory, "cache")
+	fs.AddFile(ignoredByWildcard, "log")
+	fs.AddFile(reincludedByLaterRule, "important")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, nil)
+	fs.SetupFileEnumeration(homeRoot, "*", true, []string{
+		ignoredByDirectory,
+		ignoredByWildcard,
+		reincludedByLaterRule,
+	})
+
+	if err := service.LinkDotfiles(repoRoot, userHome, ignoreFileName, false, false); err != nil {
+		t.Fatalf("LinkDotfiles() error = %v", err)
+	}
+
+	for _, ignored := range []string{
+		filepath.Join(userHome, "cache", "data.json"),
+		filepath.Join(userHome, "logs", "app.log"),
+	} {
+		if target := fs.GetLinkTarget(ignored); target != "" {
+			t.Errorf("ignored path %q was linked to %q", ignored, target)
+		}
+	}
+
+	wantLink := filepath.Join(userHome, "logs", "important.log")
+	if target := fs.GetLinkTarget(wantLink); target != reincludedByLaterRule {
+		t.Errorf("re-included path target = %q, want %q", target, reincludedByLaterRule)
+	}
 }
 
 // Test dry run functionality

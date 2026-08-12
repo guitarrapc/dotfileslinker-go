@@ -207,7 +207,7 @@ dotfileslinker --force
 
 ### dotfiles_ignore File
 
-You can specify files or directories to be excluded from linking in the `dotfiles_ignore` file:
+You can specify files or directories to be excluded from linking in the `dotfiles_ignore` file. Its syntax follows `.gitignore` pattern rules:
 
 ```
 # Example dotfiles_ignore
@@ -217,9 +217,9 @@ README.md
 LICENSE
 ```
 
-#### Supported Pattern Types
+#### Pattern Syntax
 
-DotfilesLinker supports the following pattern types in the `dotfiles_ignore` file:
+Patterns are evaluated from top to bottom, and the last matching pattern decides whether a path is ignored. Blank lines and lines beginning with `#` are ignored.
 
 ```
 # Simple filenames or paths that match exactly
@@ -230,9 +230,11 @@ LICENSE
 # Wildcard patterns
 # `*` matches any string (excluding path separators)
 # `?` matches any single character
+# `[]` matches one character from a range
 *.log
 temp*
 backup.???
+file[0-9].txt
 
 # Gitignore-style patterns
 # A pattern containing `/` matches a specific path from the repository root
@@ -240,22 +242,22 @@ backup.???
 # A pattern ending with `/` matches directories only
 docs/build/
 config/local_*.json
-HOME/**.log
+HOME/**/*.log
 **/temp/
 
 # Negation patterns
 # A pattern starting with `!` explicitly includes files that would otherwise be ignored
-# Processed after non-negated patterns
-# --------------------------
-# Patterns are processed in two stages:
-# 1. First, all non-negation patterns are evaluated
-# 2. Then, negation patterns (`!`) are applied and can override previous exclusions
-## Exclude all .log files except important.log
+# Later matching patterns override earlier ones
 *.log
 !important.log
-## Exclude everything in docs except README.md
-docs/
+
+# To re-include a file, its parent directory must not itself be excluded
+docs/*
 !docs/README.md
+
+# Escape a leading # or ! to match it literally
+\#notes.txt
+\!important.txt
 ```
 
 ### Automatic Exclusions
