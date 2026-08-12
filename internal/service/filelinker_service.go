@@ -136,15 +136,9 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 	if err := validateLinkPlan(repoRoot, plan); err != nil {
 		return err
 	}
-	validatedPlan, validationErr := s.validateLinkTargets(plan, overwrite)
-	if validationErr != nil && !dryRun {
-		return validationErr
-	}
+	validatedPlan, _ := s.validateLinkTargets(plan, overwrite)
 	if err := s.executeLinkPlan(validatedPlan, dryRun); err != nil {
 		return err
-	}
-	if validationErr != nil {
-		return validationErr
 	}
 
 	if dryRun {
@@ -302,43 +296,50 @@ func (s *FileLinkerService) validateLinkTargets(plan []linkPlanEntry, overwrite 
 
 func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRun bool) error {
 	if dryRun {
+		var validationErrors []error
 		for _, entry := range plan {
 			s.logDryRunOperation(entry)
+			if entry.validationError != nil {
+				validationErrors = append(validationErrors, entry.validationError)
+			}
 		}
-		return nil
-	}
-
-	// Prepare every destination directory before creating the first link. In
-	// particular, this prevents a ROOT permission error from occurring after
-	// HOME links have already been created. These directories are intentionally
-	// not rolled back: removing paths after other processes may have used them
-	// is less safe than leaving an empty directory behind.
-	for _, entry := range plan {
-		if entry.disposition == linkDispositionSkip || !entry.ensureParent {
-			continue
-		}
-		parent := filepath.Dir(entry.target)
-		s.logger.Verbosef("Ensuring directory exists: %s", parent)
-		if err := s.fs.EnsureDirectory(parent); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", parent, err)
-		}
+		return errors.Join(validationErrors...)
 	}
 
 	applied := make([]appliedLinkPlanEntry, 0, len(plan))
+	var operationErrors []error
 	for _, entry := range plan {
+		if entry.validationError != nil {
+			s.logger.Error(fmt.Sprintf("Cannot link %s to %s: %s", entry.source, entry.target, entry.validationError))
+			operationErrors = append(operationErrors, entry.validationError)
+			continue
+		}
+		if entry.disposition != linkDispositionSkip && entry.ensureParent {
+			parent := filepath.Dir(entry.target)
+			s.logger.Verbosef("Ensuring directory exists: %s", parent)
+			if err := s.fs.EnsureDirectory(parent); err != nil {
+				operationErr := fmt.Errorf("failed to create directory %s for %s: %w", parent, entry.target, err)
+				s.logger.Error(operationErr.Error())
+				operationErrors = append(operationErrors, operationErr)
+				continue
+			}
+		}
 		s.logger.Verbosef("Linking %s to %s", entry.source, entry.target)
 		operation, err := s.applyLink(entry)
 		if err != nil {
-			return errors.Join(err, s.rollbackLinkPlan(applied))
+			operationErrors = append(operationErrors, err)
+			continue
 		}
 		if operation != nil {
 			applied = append(applied, *operation)
 		}
 	}
 
-	// All links are now committed. Backup cleanup is post-commit work: failures
-	// are reported but never roll back links or parent directories. A later run
-	// will safely skip links that already point to their expected sources.
+	// Every entry has now reached a terminal state. Successful links are
+	// committed independently, even if another entry failed. Backup cleanup is
+	// post-commit work: failures are reported but never roll back links or parent
+	// directories. A later run will safely skip links that already point to
+	// their expected sources and retry failed entries.
 	var cleanupErrors []error
 	for _, operation := range applied {
 		if operation.backupPath == "" {
@@ -354,7 +355,7 @@ func (s *FileLinkerService) executeLinkPlan(plan []validatedLinkPlanEntry, dryRu
 	for _, operation := range applied {
 		s.logger.Success(fmt.Sprintf("Creating symbolic link: %s -> %s", operation.target, operation.source))
 	}
-	return errors.Join(cleanupErrors...)
+	return errors.Join(errors.Join(operationErrors...), errors.Join(cleanupErrors...))
 }
 
 func (s *FileLinkerService) logDryRunOperation(entry validatedLinkPlanEntry) {
@@ -429,13 +430,7 @@ func (s *FileLinkerService) collectLinkPlanEntries(repoRoot string, sourceRoot s
 
 // linkFile creates a symbolic link from the source to the target path.
 func (s *FileLinkerService) linkFile(source string, target string, overwrite bool, dryRun bool) error {
-	validated, validationErr := s.validateLinkTargets([]linkPlanEntry{{source: source, target: target}}, overwrite)
-	if validationErr != nil {
-		if dryRun {
-			s.logDryRunOperation(validated[0])
-		}
-		return validationErr
-	}
+	validated, _ := s.validateLinkTargets([]linkPlanEntry{{source: source, target: target}}, overwrite)
 	return s.executeLinkPlan(validated, dryRun)
 }
 
@@ -469,30 +464,6 @@ func (s *FileLinkerService) applyLink(entry validatedLinkPlanEntry) (*appliedLin
 	}
 
 	return &appliedLinkPlanEntry{validatedLinkPlanEntry: entry, backupPath: backupPath}, nil
-}
-
-func (s *FileLinkerService) rollbackLinkPlan(applied []appliedLinkPlanEntry) error {
-	var rollbackErrors []error
-	for i := len(applied) - 1; i >= 0; i-- {
-		operation := applied[i]
-		exists, err := s.fs.PathExists(operation.target)
-		if err != nil {
-			rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to inspect destination %s during rollback: %w", operation.target, err))
-			continue
-		}
-		if exists {
-			if err := s.fs.Delete(operation.target); err != nil {
-				rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to remove destination %s during rollback: %w", operation.target, err))
-				continue
-			}
-		}
-		if operation.backupPath != "" {
-			if err := s.fs.Move(operation.backupPath, operation.target); err != nil {
-				rollbackErrors = append(rollbackErrors, fmt.Errorf("failed to restore destination %s during rollback: %w", operation.target, err))
-			}
-		}
-	}
-	return errors.Join(rollbackErrors...)
 }
 
 func (s *FileLinkerService) moveTargetAside(target string) (string, error) {

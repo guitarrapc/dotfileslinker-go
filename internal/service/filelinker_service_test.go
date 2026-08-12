@@ -349,7 +349,7 @@ func TestLinkDotfilesRejectsDuplicateDestinationBeforeMutation(t *testing.T) {
 	assertNoMutationOperations(t, fs.OperationLog)
 }
 
-func TestLinkDotfilesValidatesAllExistingTargetsBeforeApplyingPlan(t *testing.T) {
+func TestLinkDotfilesContinuesAfterExistingTargetConflict(t *testing.T) {
 	fs := infrastructure.NewMockFileSystem()
 	root := filepath.Join(os.TempDir(), "dotfileslinker", "preflight-conflict")
 	repoRoot := filepath.Join(root, "repo")
@@ -367,7 +367,10 @@ func TestLinkDotfilesValidatesAllExistingTargetsBeforeApplyingPlan(t *testing.T)
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("LinkDotfiles() error = %v, want existing-target conflict", err)
 	}
-	assertNoMutationOperations(t, fs.OperationLog)
+	firstTarget := filepath.Join(userHome, ".first")
+	if got := fs.GetLinkTarget(firstTarget); got != firstSource {
+		t.Fatalf("non-conflicting link target = %q, want %q", got, firstSource)
+	}
 }
 
 func TestLinkDotfilesDryRunReportsRemainingEntriesAfterConflict(t *testing.T) {
@@ -399,19 +402,22 @@ func TestLinkDotfilesDryRunReportsRemainingEntriesAfterConflict(t *testing.T) {
 	assertNoMutationOperations(t, fs.OperationLog)
 }
 
-func TestLinkDotfilesRollsBackEarlierLinksWhenLaterCreationFails(t *testing.T) {
+func TestLinkDotfilesKeepsEarlierLinksWhenLaterCreationFails(t *testing.T) {
 	fs := infrastructure.NewMockFileSystem()
 	root := filepath.Join(os.TempDir(), "dotfileslinker", "apply-rollback")
 	repoRoot := filepath.Join(root, "repo")
 	userHome := filepath.Join(root, "home")
 	firstSource := filepath.Join(repoRoot, ".first")
 	secondSource := filepath.Join(repoRoot, ".second")
+	thirdSource := filepath.Join(repoRoot, ".third")
 	firstTarget := filepath.Join(userHome, ".first")
 	secondTarget := filepath.Join(userHome, ".second")
+	thirdTarget := filepath.Join(userHome, ".third")
 	creationError := errors.New("creation failed")
 	fs.AddFile(firstSource, "first")
 	fs.AddFile(secondSource, "second")
-	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{firstSource, secondSource})
+	fs.AddFile(thirdSource, "third")
+	fs.SetupFileEnumeration(repoRoot, ".*", false, []string{firstSource, secondSource, thirdSource})
 	fs.SetErrorForOperation("CreateFileSymlink:"+secondTarget, creationError)
 	service := NewFileLinkerService(fs, NewMockLogger())
 
@@ -419,15 +425,18 @@ func TestLinkDotfilesRollsBackEarlierLinksWhenLaterCreationFails(t *testing.T) {
 	if !errors.Is(err, creationError) {
 		t.Fatalf("LinkDotfiles() error = %v, want wrapped %v", err, creationError)
 	}
-	if _, exists := fs.SymLinks[firstTarget]; exists {
-		t.Fatalf("earlier link remains after rollback: %s", firstTarget)
+	if got := fs.GetLinkTarget(firstTarget); got != firstSource {
+		t.Fatalf("earlier successful link target = %q, want %q", got, firstSource)
 	}
-	if !containsOperation(fs.OperationLog, "Delete: "+firstTarget) {
-		t.Fatalf("earlier link was not rolled back: %v", fs.OperationLog)
+	if containsOperation(fs.OperationLog, "Delete: "+firstTarget) {
+		t.Fatalf("earlier successful link was rolled back: %v", fs.OperationLog)
+	}
+	if got := fs.GetLinkTarget(thirdTarget); got != thirdSource {
+		t.Fatalf("link after failed entry target = %q, want %q", got, thirdSource)
 	}
 }
 
-func TestLinkDotfilesRestoresEarlierReplacementWhenLaterCreationFails(t *testing.T) {
+func TestLinkDotfilesKeepsEarlierReplacementWhenLaterCreationFails(t *testing.T) {
 	fs := infrastructure.NewMockFileSystem()
 	root := filepath.Join(os.TempDir(), "dotfileslinker", "replacement-rollback")
 	repoRoot := filepath.Join(root, "repo")
@@ -449,18 +458,15 @@ func TestLinkDotfilesRestoresEarlierReplacementWhenLaterCreationFails(t *testing
 	if !errors.Is(err, creationError) {
 		t.Fatalf("LinkDotfiles() error = %v, want wrapped %v", err, creationError)
 	}
-	if got := fs.Files[firstTarget]; got != "original first" {
-		t.Fatalf("earlier replacement was not restored: got %q", got)
-	}
-	if _, exists := fs.SymLinks[firstTarget]; exists {
-		t.Fatalf("replacement link remains after rollback: %s", firstTarget)
+	if got := fs.GetLinkTarget(firstTarget); got != firstSource {
+		t.Fatalf("earlier replacement link target = %q, want %q", got, firstSource)
 	}
 	if _, exists := fs.Files[firstBackup]; exists {
-		t.Fatalf("backup remains after successful rollback: %s", firstBackup)
+		t.Fatalf("backup remains after committed replacement: %s", firstBackup)
 	}
 }
 
-func TestExecuteLinkPlanPreparesAllParentsBeforeCreatingLinks(t *testing.T) {
+func TestExecuteLinkPlanContinuesAfterParentCreationFailure(t *testing.T) {
 	fs := infrastructure.NewMockFileSystem()
 	homeSource := filepath.Clean("/repo/HOME/.config/app/config")
 	rootSource := filepath.Clean("/repo/ROOT/etc/app/config")
@@ -481,13 +487,14 @@ func TestExecuteLinkPlanPreparesAllParentsBeforeCreatingLinks(t *testing.T) {
 	if !errors.Is(err, permissionError) {
 		t.Fatalf("executeLinkPlan() error = %v, want wrapped %v", err, permissionError)
 	}
-	for _, operation := range fs.OperationLog {
-		if strings.HasPrefix(operation, "CreateFileSymlink:") || strings.HasPrefix(operation, "CreateDirectorySymlink:") {
-			t.Fatalf("link was created before every parent was prepared: %v", fs.OperationLog)
-		}
+	if got := fs.GetLinkTarget(homeTarget); got != homeSource {
+		t.Fatalf("link with valid parent target = %q, want %q", got, homeSource)
+	}
+	if got := fs.GetLinkTarget(rootTarget); got != "" {
+		t.Fatalf("link with failed parent creation was created: %q", got)
 	}
 	if homeParent := filepath.Dir(homeTarget); !fs.Directories[homeParent] {
-		t.Fatalf("prepared parent should remain after later preparation failed: %s", homeParent)
+		t.Fatalf("successfully prepared parent is missing: %s", homeParent)
 	}
 }
 
