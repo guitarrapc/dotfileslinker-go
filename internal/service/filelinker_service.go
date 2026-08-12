@@ -96,7 +96,7 @@ func (s *FileLinkerService) LinkDotfiles(repoRoot string, userHome string, ignor
 
 // processRepositoryRoot processes and links files in the repository root.
 func (s *FileLinkerService) processRepositoryRoot(repoRoot string, userHome string, ignoreMatcher *ignoreMatcher, overwrite bool, dryRun bool) error {
-	files, err := s.fs.EnumerateFiles(repoRoot, ".*", false, nil)
+	files, err := s.fs.EnumerateFiles(repoRoot, ".*", false)
 	if err != nil {
 		return fmt.Errorf("failed to enumerate files in repository root: %w", err)
 	}
@@ -162,34 +162,9 @@ func (s *FileLinkerService) processDirectory(repoRoot string, srcDir string, des
 	}
 
 	s.logger.Info(fmt.Sprintf("Processing %s directory: %s", srcDir, srcPath))
-	shouldSkipDirectory := func(directory string) bool {
-		relPath, err := filepath.Rel(repoRoot, directory)
-		if err != nil {
-			return false
-		}
-		return shouldIgnoreFile(relPath, true, ignoreMatcher)
-	}
-	allFiles, err := s.fs.EnumerateFiles(srcPath, "*", true, shouldSkipDirectory)
+	files, ignoredFiles, err := s.collectFiles(repoRoot, srcPath, ignoreMatcher)
 	if err != nil {
 		return fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
-	}
-
-	// Filter files based on ignore patterns
-	var files []string
-	var ignoredFiles []string
-	for _, file := range allFiles {
-		relPath, err := filepath.Rel(repoRoot, file)
-		if err != nil {
-			// Preserve the source directory prefix used by root-relative patterns.
-			relPath = filepath.Join(srcDir, filepath.Base(file))
-		}
-		isDir := s.fs.DirectoryExists(file)
-
-		if shouldIgnoreFile(relPath, isDir, ignoreMatcher) {
-			ignoredFiles = append(ignoredFiles, file)
-		} else {
-			files = append(files, file)
-		}
 	}
 
 	// Log ignored files
@@ -226,6 +201,53 @@ func (s *FileLinkerService) processDirectory(repoRoot string, srcDir string, des
 	}
 
 	return nil
+}
+
+// collectFiles collects linkable files without descending into ignored directories.
+func (s *FileLinkerService) collectFiles(repoRoot string, sourceRoot string, ignoreMatcher *ignoreMatcher) ([]string, []string, error) {
+	pendingDirectories := []string{sourceRoot}
+	var files []string
+	var ignoredPaths []string
+
+	for len(pendingDirectories) > 0 {
+		last := len(pendingDirectories) - 1
+		currentDirectory := pendingDirectories[last]
+		pendingDirectories = pendingDirectories[:last]
+
+		directories, err := s.fs.EnumerateDirectories(currentDirectory)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, directory := range directories {
+			relativePath, err := filepath.Rel(repoRoot, directory)
+			if err != nil {
+				return nil, nil, err
+			}
+			if shouldIgnoreFile(relativePath, true, ignoreMatcher) {
+				ignoredPaths = append(ignoredPaths, directory)
+				continue
+			}
+			pendingDirectories = append(pendingDirectories, directory)
+		}
+
+		currentFiles, err := s.fs.EnumerateFiles(currentDirectory, "*", false)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, file := range currentFiles {
+			relativePath, err := filepath.Rel(repoRoot, file)
+			if err != nil {
+				return nil, nil, err
+			}
+			if shouldIgnoreFile(relativePath, false, ignoreMatcher) {
+				ignoredPaths = append(ignoredPaths, file)
+			} else {
+				files = append(files, file)
+			}
+		}
+	}
+
+	return files, ignoredPaths, nil
 }
 
 // linkFile creates a symbolic link from the source to the target path.

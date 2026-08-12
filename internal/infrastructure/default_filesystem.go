@@ -57,7 +57,7 @@ func (dfs *DefaultFileSystem) CreateDirectorySymlink(linkPath string, target str
 }
 
 // EnumerateFiles enumerates files that match a specific pattern in a specified directory.
-func (dfs *DefaultFileSystem) EnumerateFiles(root string, pattern string, recursive bool, shouldSkipDirectory func(path string) bool) ([]string, error) {
+func (dfs *DefaultFileSystem) EnumerateFiles(root string, pattern string, recursive bool) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -66,10 +66,6 @@ func (dfs *DefaultFileSystem) EnumerateFiles(root string, pattern string, recurs
 
 		// ディレクトリをスキップ
 		if entry.IsDir() {
-			if path != root && shouldSkipDirectory != nil && shouldSkipDirectory(path) {
-				return filepath.SkipDir
-			}
-
 			// 再帰的に検索しない場合は、ルートディレクトリ以外のサブディレクトリをスキップ
 			if !recursive && path != root {
 				return filepath.SkipDir
@@ -90,6 +86,22 @@ func (dfs *DefaultFileSystem) EnumerateFiles(root string, pattern string, recurs
 	})
 
 	return files, err
+}
+
+// EnumerateDirectories enumerates immediate child directories.
+func (dfs *DefaultFileSystem) EnumerateDirectories(root string) ([]string, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+
+	directories := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			directories = append(directories, filepath.Join(root, entry.Name()))
+		}
+	}
+	return directories, nil
 }
 
 // EnsureDirectory creates a directory at the specified path if it does not already exist.

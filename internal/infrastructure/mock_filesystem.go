@@ -87,7 +87,7 @@ func (m *MockFileSystem) CreateDirectorySymlink(linkPath string, target string) 
 }
 
 // EnumerateFiles lists files matching a pattern
-func (m *MockFileSystem) EnumerateFiles(root string, pattern string, recursive bool, shouldSkipDirectory func(path string) bool) ([]string, error) {
+func (m *MockFileSystem) EnumerateFiles(root string, pattern string, recursive bool) ([]string, error) {
 	key := "EnumerateFiles:" + root + ":" + pattern + ":" + getBoolStr(recursive)
 	m.OperationLog = append(m.OperationLog, key)
 	if err, exists := m.ErrorResponses[key]; exists {
@@ -96,45 +96,46 @@ func (m *MockFileSystem) EnumerateFiles(root string, pattern string, recursive b
 
 	files, exists := m.FileEnumerations[root+":"+pattern+":"+getBoolStr(recursive)]
 	if exists {
-		if shouldSkipDirectory == nil {
-			return files, nil
-		}
-
-		filtered := make([]string, 0, len(files))
-		for _, file := range files {
-			if !hasSkippedParent(root, file, shouldSkipDirectory) {
-				filtered = append(filtered, file)
-			}
-		}
-		return filtered, nil
+		return files, nil
 	}
-	return []string{}, nil
+
+	root = filepath.Clean(root)
+	result := make([]string, 0)
+	for file := range m.Files {
+		relative, err := filepath.Rel(root, file)
+		if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if !recursive && filepath.Dir(relative) != "." {
+			continue
+		}
+		matched, err := filepath.Match(pattern, filepath.Base(file))
+		if err != nil {
+			return nil, err
+		}
+		if matched {
+			result = append(result, file)
+		}
+	}
+	return result, nil
 }
 
-func hasSkippedParent(root, file string, shouldSkipDirectory func(path string) bool) bool {
+// EnumerateDirectories lists immediate child directories.
+func (m *MockFileSystem) EnumerateDirectories(root string) ([]string, error) {
+	key := "EnumerateDirectories:" + root
+	m.OperationLog = append(m.OperationLog, key)
+	if err, exists := m.ErrorResponses[key]; exists {
+		return nil, err
+	}
+
 	root = filepath.Clean(root)
-	directory := filepath.Dir(filepath.Clean(file))
-	var parents []string
-
-	for directory != root {
-		relative, err := filepath.Rel(root, directory)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return false
-		}
-		parents = append(parents, directory)
-		next := filepath.Dir(directory)
-		if next == directory {
-			return false
-		}
-		directory = next
-	}
-
-	for i := len(parents) - 1; i >= 0; i-- {
-		if shouldSkipDirectory(parents[i]) {
-			return true
+	directories := make([]string, 0)
+	for directory := range m.Directories {
+		if filepath.Dir(filepath.Clean(directory)) == root {
+			directories = append(directories, directory)
 		}
 	}
-	return false
+	return directories, nil
 }
 
 // EnsureDirectory creates a directory if it doesn't exist
@@ -166,9 +167,13 @@ func (m *MockFileSystem) ReadAllLines(path string) ([]string, error) {
 // AddFile adds a file to the mock filesystem
 func (m *MockFileSystem) AddFile(path string, content string) {
 	m.Files[path] = content
-	// When adding a file, ensure its directory exists
-	dir := filepath.Dir(path)
-	m.Directories[dir] = true
+	for directory := filepath.Dir(path); ; directory = filepath.Dir(directory) {
+		m.Directories[directory] = true
+		next := filepath.Dir(directory)
+		if next == directory {
+			break
+		}
+	}
 }
 
 // AddDirectory adds a directory to the mock filesystem

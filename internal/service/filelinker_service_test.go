@@ -313,10 +313,13 @@ func TestFileLinkerService_GitIgnoreSemantics(t *testing.T) {
 		t.Errorf("re-included path target = %q, want %q", target, reincludedByLaterRule)
 	}
 
-	ignoredFileCheck := "DirectoryExists: " + ignoredByDirectory
+	forbiddenOperations := map[string]bool{
+		"EnumerateDirectories:" + filepath.Join(homeRoot, "cache"):        true,
+		"EnumerateFiles:" + filepath.Join(homeRoot, "cache") + ":*:false": true,
+	}
 	for _, operation := range fs.OperationLog {
-		if operation == ignoredFileCheck {
-			t.Fatalf("file inside ignored directory reached service filtering: %s", operation)
+		if forbiddenOperations[operation] {
+			t.Fatalf("ignored directory was traversed: %s", operation)
 		}
 	}
 }
