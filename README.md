@@ -308,8 +308,10 @@ Differences and unsupported behavior:
 ### Automatic Exclusions
 
 The following files and directories are automatically excluded:
-- Directories starting with `.git` (like `.github`)
+- Version-control metadata directories named `.git`, `.svn`, or `.hg`
 - Non-dotfiles in the root directory
+
+Similarly named directories such as `.github` are not automatic exclusions. Add them to `dotfiles_ignore` when they should not be linked.
 
 ## Windows Security Notes
 
