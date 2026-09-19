@@ -867,7 +867,7 @@ func TestCollectLinkPlanEntriesReadsEachDirectoryOnce(t *testing.T) {
 	service := NewFileLinkerService(fs, NewNullLogger())
 
 	var plan linkPlan
-	if _, err := service.builder.collectLinkPlanEntries(&plan, repoRoot, homeRoot, filepath.Clean("/home/user"), newIgnoreMatcher(nil)); err != nil {
+	if _, err := service.builder.collectLinkPlanEntries(&plan, repoRoot, homeRoot, filepath.Clean("/home/user"), newIgnoreMatcher(nil), newIgnoreMatcher(nil)); err != nil {
 		t.Fatalf("collectLinkPlanEntries() error = %v", err)
 	}
 

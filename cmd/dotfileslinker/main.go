@@ -197,6 +197,11 @@ Directory Structure:
   - Files in the ROOT/ directory will be linked to the same relative path in /
     (Only available on Linux/macOS)
 
+Directory Links:
+  Directories selected in 'dotfiles_link_dirs' are linked as a whole.
+  Use repository-relative patterns, e.g. HOME/.agents/skills/*
+  Entire contents are linked; descendant ignore rules do not apply.
+
 Ignore File:
   Files listed in 'dotfiles_ignore' will be excluded from linking
 

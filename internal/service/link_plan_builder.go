@@ -32,6 +32,12 @@ func (b *linkPlanBuilder) build(repoRoot, userHome, ignoreFileName string) (link
 	if err != nil {
 		return nil, err
 	}
+	directoryPatterns, err := b.loadPatterns(filepath.Join(repoRoot, "dotfiles_link_dirs"), "directory-link")
+	if err != nil {
+		return nil, err
+	}
+	directoryLinks := newIgnoreMatcher(directoryPatterns)
+	b.logger.Verbosef("Loaded %d directory-link patterns from %s", directoryLinks.count(), filepath.Join(repoRoot, "dotfiles_link_dirs"))
 	ignoreMatcher := newIgnoreMatcher(userIgnore)
 	b.logger.Verbosef("Loaded %d user-defined ignore patterns from %s", ignoreMatcher.count(), ignorePath)
 	b.logger.Verbosef("Using %d default ignore patterns", len(defaultIgnorePatterns))
@@ -40,12 +46,12 @@ func (b *linkPlanBuilder) build(repoRoot, userHome, ignoreFileName string) (link
 	if err := b.appendRepositoryRootPlan(&plan, repoRoot, userHome, ignoreMatcher); err != nil {
 		return nil, err
 	}
-	if err := b.appendDirectoryPlan(&plan, repoRoot, "HOME", userHome, ignoreMatcher); err != nil {
+	if err := b.appendDirectoryPlan(&plan, repoRoot, "HOME", userHome, ignoreMatcher, directoryLinks); err != nil {
 		return nil, err
 	}
 	if runtime.GOOS == "windows" {
 		b.logger.Info("Skipping ROOT directory processing on non-Unix platforms")
-	} else if err := b.appendDirectoryPlan(&plan, repoRoot, "ROOT", "/", ignoreMatcher); err != nil {
+	} else if err := b.appendDirectoryPlan(&plan, repoRoot, "ROOT", "/", ignoreMatcher, directoryLinks); err != nil {
 		return nil, err
 	}
 	if err := plan.validate(repoRoot); err != nil {
@@ -82,7 +88,7 @@ func (b *linkPlanBuilder) appendRepositoryRootPlan(plan *linkPlan, repoRoot, use
 	return nil
 }
 
-func (b *linkPlanBuilder) appendDirectoryPlan(plan *linkPlan, repoRoot, srcDir, destDir string, matcher *ignoreMatcher) error {
+func (b *linkPlanBuilder) appendDirectoryPlan(plan *linkPlan, repoRoot, srcDir, destDir string, matcher, directoryLinks *ignoreMatcher) error {
 	srcPath := filepath.Join(repoRoot, srcDir)
 	if !b.fs.DirectoryExists(srcPath) {
 		b.logger.Infof("%s directory not found: %s", srcDir, srcPath)
@@ -90,18 +96,18 @@ func (b *linkPlanBuilder) appendDirectoryPlan(plan *linkPlan, repoRoot, srcDir, 
 	}
 	b.logger.Infof("Processing %s directory: %s", srcDir, srcPath)
 	start := len(*plan)
-	ignoredCount, err := b.collectLinkPlanEntries(plan, repoRoot, srcPath, destDir, matcher)
+	ignoredCount, err := b.collectLinkPlanEntries(plan, repoRoot, srcPath, destDir, matcher, directoryLinks)
 	if err != nil {
 		return fmt.Errorf("failed to enumerate files in %s: %w", srcDir, err)
 	}
 	if ignoredCount > 0 {
-		b.logger.Infof("Ignored %d files from %s directory based on ignore patterns", ignoredCount, srcDir)
+		b.logger.Infof("Ignored %d entries from %s directory based on ignore patterns", ignoredCount, srcDir)
 	}
-	b.logger.Infof("Found %d files to link from %s directory to %s", len(*plan)-start, srcDir, destDir)
+	b.logger.Infof("Found %d entries to link from %s directory to %s", len(*plan)-start, srcDir, destDir)
 	return nil
 }
 
-func (b *linkPlanBuilder) collectLinkPlanEntries(plan *linkPlan, repoRoot, sourceRoot, destinationRoot string, matcher *ignoreMatcher) (int, error) {
+func (b *linkPlanBuilder) collectLinkPlanEntries(plan *linkPlan, repoRoot, sourceRoot, destinationRoot string, matcher, directoryLinks *ignoreMatcher) (int, error) {
 	pendingDirectories := []string{sourceRoot}
 	ignoredCount := 0
 	for len(pendingDirectories) > 0 {
@@ -121,12 +127,15 @@ func (b *linkPlanBuilder) collectLinkPlanEntries(plan *linkPlan, repoRoot, sourc
 				if shouldIgnoreFile(repositoryRelativePath, true, matcher) {
 					ignoredCount++
 					b.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", child.Path)
-				} else {
-					pendingDirectories = append(pendingDirectories, child.Path)
+					continue
 				}
-				continue
+				if !directoryLinks.ignored(filepath.ToSlash(repositoryRelativePath), true) {
+					pendingDirectories = append(pendingDirectories, child.Path)
+					continue
+				}
+				// A selected directory is one operation; never traverse its contents.
 			}
-			if shouldIgnoreFile(repositoryRelativePath, false, matcher) {
+			if !child.IsDirectory && shouldIgnoreFile(repositoryRelativePath, false, matcher) {
 				ignoredCount++
 				b.logger.Verbosef("  Ignored file: %s (matched ignore pattern)", child.Path)
 				continue
@@ -142,17 +151,21 @@ func (b *linkPlanBuilder) collectLinkPlanEntries(plan *linkPlan, repoRoot, sourc
 }
 
 func (b *linkPlanBuilder) loadIgnorePatterns(ignoreFilePath string) ([]string, error) {
+	return b.loadPatterns(ignoreFilePath, "ignore")
+}
+
+func (b *linkPlanBuilder) loadPatterns(ignoreFilePath, kind string) ([]string, error) {
 	exists, err := b.fs.PathExists(ignoreFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to inspect ignore file %s: %w", ignoreFilePath, err)
+		return nil, fmt.Errorf("failed to inspect %s file %s: %w", kind, ignoreFilePath, err)
 	}
 	if !exists {
-		b.logger.Verbosef("Ignore file not found: %s", ignoreFilePath)
+		b.logger.Verbosef("Optional %s file not found: %s", kind, ignoreFilePath)
 		return nil, nil
 	}
 	lines, err := b.fs.ReadAllLines(ignoreFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read ignore file %s: %w", ignoreFilePath, err)
+		return nil, fmt.Errorf("failed to read %s file %s: %w", kind, ignoreFilePath, err)
 	}
 	return lines, nil
 }
